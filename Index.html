@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- This viewport tag makes the web page scale properly on an iPhone screen and prevents accidental zooming when tapping text boxes -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  
+  <!-- These two tags allow the app to look like a real fullscreen app when saved to your iPhone Home Screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Gemini Stateful App</title>
+
+  <style>
+    /* --- CSS STYLING (How the app looks) --- */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh; /* Takes up 100% of the iPhone screen height */
+      overflow: hidden;
+    }
+
+    /* Top Navigation Bar */
+    header {
+      background-color: #1f1f1f;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #333;
+    }
+
+    header h1 {
+      font-size: 18px;
+    }
+
+    .nav-btn {
+      background-color: #333;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* Main Chat Display Area */
+    #chat-container {
+      flex: 1; /* Grows to fill available space between header and bottom input */
+      overflow-y: auto; /* Allows scrolling through chat history */
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Individual Message Bubbles */
+    .message {
+      max-width: 85%;
+      padding: 12px;
+      border-radius: 12px;
+      line-height: 1.4;
+      font-size: 15px;
+      white-space: pre-wrap; /* Preserves line breaks in Gemini's response */
+    }
+
+    .user-message {
+      background-color: #0b57d0;
+      align-self: flex-end; /* Pushes user messages to the right */
+    }
+
+    .ai-message {
+      background-color: #2b2b2b;
+      align-self: flex-start; /* Pushes Gemini messages to the left */
+    }
+
+    /* Bottom Input Bar */
+    #input-container {
+      background-color: #1f1f1f;
+      padding: 10px 15px 25px 15px; /* Extra padding on bottom for iPhone home bar */
+      display: flex;
+      gap: 10px;
+      border-top: 1px solid #333;
+    }
+
+    #user-input {
+      flex: 1;
+      background-color: #2b2b2b;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 16px; /* 16px prevents iOS Safari from auto-zooming on tap */
+    }
+
+    #send-btn {
+      background-color: #0b57d0;
+      color: white;
+      border: none;
+      padding: 0 18px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    #send-btn:disabled {
+      background-color: #555;
+    }
+
+    /* Settings & Files Drawer (Hidden by default) */
+    #drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      padding: 20px;
+      overflow-y: auto;
+      display: none; /* Hidden until user taps "Files & Settings" */
+      flex-direction: column;
+      gap: 15px;
+      z-index: 10;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      font-size: 14px;
+      color: #aaa;
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    textarea, input[type="password"] {
+      width: 100%;
+      background-color: #1f1f1f;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    textarea {
+      height: 150px;
+      resize: vertical;
+    }
+
+    .save-btn {
+      background-color: #2e7d32;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+
+    .danger-btn {
+      background-color: #c62828;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header>
+    <h1>Command Console</h1>
+    <button class="nav-btn" onclick="toggleDrawer()">Files & Settings</button>
+  </header>
+
+  <!-- CHAT LOG DISPLAY -->
+  <div id="chat-container">
+    <!-- Chat messages will dynamically appear here -->
+  </div>
+
+  <!-- USER INPUT AREA -->
+  <!-- EXTENSION POINT: If you want to add quick-action buttons later (like "Check Inventory" or "Roll Dice"), you can add a bar of buttons right above this input-container! -->
+  <div id="input-container">
+    <input type="text" id="user-input" placeholder="Enter command, function, or action...">
+    <button id="send-btn" onclick="handleSend()">Send</button>
+  </div>
+
+  <!-- SETTINGS & SAVED DOCUMENTS DRAWER -->
+  <div id="drawer">
+    <div class="drawer-header">
+      <h2>Saved Documents & Setup</h2>
+      <button class="nav-btn" onclick="toggleDrawer()">Close</button>
+    </div>
+
+    <div>
+      <label for="api-key-input">Gemini API Key:</label>
+      <input type="password" id="api-key-input" placeholder="Paste your AI Studio key here...">
+    </div>
+
+    <div>
+      <label for="ruleset-input">Ruleset Document (Sent with every prompt):</label>
+      <textarea id="ruleset-input" placeholder="Enter the permanent rules, functions, or instructions Gemini must always follow..."></textarea>
+    </div>
+
+    <div>
+      <label for="summary-input">Saved Chat Summary Document (Auto-updates after every turn):</label>
+      <textarea id="summary-input" placeholder="Initially empty. Gemini will automatically write and overwrite the running summary here..."></textarea>
+    </div>
+
+    <button class="save-btn" onclick="saveDocuments()">Save Changes</button>
+    <button class="danger-btn" onclick="clearChatLog()">Clear Visual Chat Log (Keeps Summary)</button>
+  </div>
+
+  <script>
+    // --- JAVASCRIPT LOGIC (How the app works) ---
+
+    // 1. Grab references to all our HTML elements on the screen so we can control them
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const drawer = document.getElementById('drawer');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const rulesetInput = document.getElementById('ruleset-input');
+    const summaryInput = document.getElementById('summary-input');
+
+    // 2. Load saved data from the iPhone's internal storage when the app opens
+    window.onload = function() {
+      // Load the API Key, Ruleset, and Summary from localStorage (our "saved text files")
+      apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+      rulesetInput.value = localStorage.getItem('saved_ruleset') || 'You are a helpful assistant processing user commands and actions.';
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+
+      // Load the visual chat history so you don't lose your screen log on refresh
+      const savedChat = JSON.parse(localStorage.getItem('visual_chat_log') || '[]');
+      savedChat.forEach(msg => appendMessageToScreen(msg.role, msg.text));
+    };
+
+    // 3. Function to open and close the "Files & Settings" menu
+    function toggleDrawer() {
+      // Always refresh the text boxes with the latest saved summary before showing
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+      
+      if (drawer.style.display === 'flex') {
+        drawer.style.display = 'none';
+      } else {
+        drawer.style.display = 'flex';
+      }
+    }
+
+    // 4. Function to manually save changes made in the Settings drawer
+    function saveDocuments() {
+      localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
+      localStorage.setItem('saved_ruleset', rulesetInput.value);
+      localStorage.setItem('saved_summary', summaryInput.value);
+      alert('Documents and API Key saved!');
+      toggleDrawer();
+    }
+
+    // 5. Function to add a message bubble to the screen
+    function appendMessageToScreen(role, text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.classList.add(role === 'user' ? 'user-message' : 'ai-message');
+      msgDiv.textContent = text;
+      chatContainer.appendChild(msgDiv);
+      
+      // Auto-scroll to the bottom of the chat
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 6. Function to save a message to the visual chat log in storage
+    function saveMessageToVisualLog(role, text) {
+      const savedChat = JSON.parse(localStorage.getItem('visual_chat_log') || '[]');
+      savedChat.push({ role: role, text: text });
+      localStorage.setItem('visual_chat_log', JSON.stringify(savedChat));
+    }
+
+    // 7. Function to clear the visual screen log if it gets too long
+    function clearChatLog() {
+      if (confirm('Clear the visual chat bubbles? Your saved Summary and Ruleset will NOT be deleted.')) {
+        localStorage.removeItem('visual_chat_log');
+        chatContainer.innerHTML = '';
+        toggleDrawer();
+      }
+    }
+
+    // 8. THE CORE WORKFLOW: Sending the prompt, summary, and ruleset to Gemini
+    async function handleSend() {
+      const promptText = userInput.value.trim();
+      const apiKey = localStorage.getItem('gemini_api_key');
+
+      // Check if the user forgot to enter an API key
+      if (!apiKey) {
+        alert('Please tap "Files & Settings" and enter your Gemini API Key first.');
+        toggleDrawer();
+        return;
+      }
+
+      // Do nothing if the text box is empty
+      if (!promptText) return;
+
+      // Disable the Send button while waiting for Gemini
+      userInput.value = '';
+      sendBtn.disabled = true;
+      sendBtn.textContent = '...';
+
+      // Display the user's action on the screen and save it to the visual log
+      appendMessageToScreen('user', promptText);
+      saveMessageToVisualLog('user', promptText);
+
+      // Retrieve our two "saved text documents" from storage
+      const currentRuleset = localStorage.getItem('saved_ruleset') || 'No specific rules provided.';
+      const currentSummary = localStorage.getItem('saved_summary') || 'No previous conversation summary.';
+
+      // Assemble the combined mega-prompt exactly as specified in your workflow
+      const combinedPayload = `
+=== RULESET DOCUMENT ===
+${currentRuleset}
+
+=== SAVED CHAT SUMMARY DOCUMENT ===
+${currentSummary}
+
+=== USER COMMAND / ACTION ===
+${promptText}
+
+=== FINAL INSTRUCTION ===
+1. Process the USER COMMAND / ACTION above while strictly obeying the RULESET DOCUMENT and maintaining continuity with the SAVED CHAT SUMMARY DOCUMENT.
+2. Put your direct response to the user in the "chat_response" field (do not repeat the ruleset or summary in this field).
+3. Produce a new, comprehensive, detailed summary of the entire chat history (incorporating the previous summary plus the events of this latest turn) and place it in the "updated_summary" field so it can overwrite the saved summary text document.
+`;
+
+      try {
+        // Call the official Gemini API (using the fast and capable gemini-2.5-flash model)
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: combinedPayload }]
+            }],
+            // GenerationConfig forces Gemini to return a strict JSON object with two separate fields
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                properties: {
+                  chat_response: {
+                    type: "STRING",
+                    description: "The response to display in the chat log (minus the summary and ruleset)."
+                  },
+                  updated_summary: {
+                    type: "STRING",
+                    description: "The new detailed summary of the entire chat to overwrite the saved summary text document."
+                  }
+                },
+                required: ["chat_response", "updated_summary"]
+              }
+            }
+          })
+        });
+
+        // Convert the raw server response into a JavaScript object
+        const data = await response.json();
+
+        // Check if the API returned an error (like an invalid API key)
+        if (data.error) {
+          throw new Error(data.error.message);
+        }
+
+        // Extract the structured JSON text returned by Gemini and parse it
+        const rawJsonText = data.candidates[0].content.parts[0].text;
+        const parsedResult = JSON.parse(rawJsonText);
+
+        // STEP A: Display ONLY the chat log response to the user
+        appendMessageToScreen('ai', parsedResult.chat_response);
+        saveMessageToVisualLog('ai', parsedResult.chat_response);
+
+        // STEP B: Overwrite the saved summary text document with the new summary!
+        localStorage.setItem('saved_summary', parsedResult.updated_summary);
+        summaryInput.value = parsedResult.updated_summary; // Also update the text box inside the drawer
+
+      } catch (error) {
+        // If anything goes wrong, show the error message inside the chat window
+        appendMessageToScreen('ai', 'Error communicating with Gemini: ' + error.message);
+      } finally {
+        // Re-enable the Send button so the user is prompted to enter their next input
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
+    }
+  </script>
+</body>
+</html>
