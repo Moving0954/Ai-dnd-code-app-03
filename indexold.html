@@ -348,7 +348,6 @@ ${promptText}
 `;
 
       try {
-              try {
         const cleanKey = apiKey.replace(/\s+/g, '');
         // Try primary model first, then automatically fall back if experiencing high demand
         const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
