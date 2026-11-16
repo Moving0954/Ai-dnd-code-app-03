@@ -348,12 +348,81 @@ ${promptText}
 `;
 
       try {
+              try {
+        const cleanKey = apiKey.replace(/\s+/g, '');
+        // Try primary model first, then automatically fall back if experiencing high demand
+        const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+        let data = null;
+        let lastError = null;
+
+        for (const modelName of modelsToTry) {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: combinedPayload }] }],
+              generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: "OBJECT",
+                  properties: {
+                    chat_response: {
+                      type: "STRING",
+                      description: "The response to display in the chat log (minus the summary and ruleset)."
+                    },
+                    updated_summary: {
+                      type: "STRING",
+                      description: "The new detailed summary of the entire chat to overwrite the saved summary text document."
+                    }
+                  },
+                  required: ["chat_response", "updated_summary"]
+                }
+              }
+            })
+          });
+
+          const responseData = await response.json();
+
+          // If the model is overloaded (503) or rate-limited (429), try the next model in the list
+          if (response.status === 503 || response.status === 429 || (responseData.error && responseData.error.message.includes('high demand'))) {
+            lastError = responseData.error ? responseData.error.message : `Model ${modelName} busy`;
+            continue;
+          }
+
+          if (responseData.error) {
+            throw new Error(responseData.error.message);
+          }
+
+          data = responseData;
+          break; // Success! Exit the fallback loop
+        }
+
+        if (!data) {
+          throw new Error(lastError || 'All fallback models are currently busy.');
+        }
+
+        const rawJsonText = data.candidates[0].content.parts[0].text;
+        const parsedResult = JSON.parse(rawJsonText);
+
+        appendMessageToScreen('ai', parsedResult.chat_response);
+        saveMessageToVisualLog('ai', parsedResult.chat_response);
+
+        localStorage.setItem('saved_summary', parsedResult.updated_summary);
+        summaryInput.value = parsedResult.updated_summary;
+
+      } catch (error) {
+        // Restore your typed prompt into the input box so you never have to retype a long character description!
+        userInput.value = promptText;
+        appendMessageToScreen('ai', 'Error communicating with Gemini: ' + error.message);
+      } finally {
+
         // Call the official Gemini API (using the fast and capable gemini-3.8-flash model)
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+       // const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
+         // method: 'POST',
+        //  headers: {
+         //   'Content-Type': 'application/json'
+         // },
           body: JSON.stringify({
             contents: [{
               parts: [{ text: combinedPayload }]
