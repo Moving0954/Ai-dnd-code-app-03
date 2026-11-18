@@ -613,6 +613,11 @@
       }
     }
 
+    // Validates both newer AI Studio auth keys (AQ. ...) and classic keys (AIza...)
+    function isValidGeminiKeyFormat(key) {
+      return /^(AIza|AQ\.)[0-9A-Za-z.\-_]{20,}$/.test(key);
+    }
+
     // --- IOS PICTURE-IN-PICTURE (CANVAS-TO-VIDEO WITH BATTERY-SAVING IDLE SLEEP) ---
     let pipState = {
       status: 'READY',
@@ -893,8 +898,8 @@
 
     function saveDocuments() {
       const cleanedKey = apiKeyInput.value.replace(/\s+/g, '');
-      if (cleanedKey && !/^AIza[0-9A-Za-z\-_]{20,}$/.test(cleanedKey)) {
-        alert('Warning: That does not look like a valid Google AI Studio API key (it should start with "AIza"). Please double-check your pasted key.');
+      if (cleanedKey && !isValidGeminiKeyFormat(cleanedKey)) {
+        alert('Warning: That does not look like a valid Google AI Studio API key (it should start with "AQ." or "AIza"). Please double-check your pasted key.');
         return;
       }
 
@@ -1237,7 +1242,7 @@
       }
 
       const cleanKey = apiKey.replace(/\s+/g, '');
-      if (!/^AIza[0-9A-Za-z\-_]{20,}$/.test(cleanKey)) {
+      if (!isValidGeminiKeyFormat(cleanKey)) {
         alert('Invalid API Key format detected. Please open "Files" and verify your Google AI Studio key.');
         toggleDrawer();
         return;
