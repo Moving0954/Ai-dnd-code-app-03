@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://openrouter.ai; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none';">
-  <title>Command Console (OpenRouter)</title>
+  <title>Command Console (OpenRouter Free)</title>
 
   <style>
     * {
@@ -488,9 +488,9 @@
       <label for="api-key-input">OpenRouter API Key (Sent via Bearer header):</label>
       <input type="password" id="api-key-input" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-...">
 
-      <label for="model-id-input" style="margin-top: 4px;">Primary OpenRouter Model ID:</label>
-      <span class="sub-label">Examples: google/gemini-2.5-pro, anthropic/claude-sonnet-4, deepseek/deepseek-r1</span>
-      <input type="text" id="model-id-input" autocomplete="off" spellcheck="false" placeholder="google/gemini-2.5-pro">
+      <label for="model-id-input" style="margin-top: 4px;">Free OpenRouter Model ID (Locked to :free or openrouter/free):</label>
+      <span class="sub-label">Examples: openrouter/free, google/gemma-4-31b-it:free, meta-llama/llama-3.3-70b-instruct:free</span>
+      <input type="text" id="model-id-input" autocomplete="off" spellcheck="false" placeholder="openrouter/free">
     </div>
 
     <div class="section-card">
@@ -604,7 +604,7 @@
 
     const MAX_VISIBLE_BUBBLES = 30;
     const MAX_STORED_TRANSCRIPT = 1000;
-    const DEFAULT_PRIMARY_MODEL = 'google/gemini-2.5-pro';
+    const DEFAULT_PRIMARY_MODEL = 'openrouter/free';
     let visualChatCache = [];
     let fullTranscriptCache = [];
     let isSending = false;
@@ -621,6 +621,13 @@
 
     function isValidOpenRouterKeyFormat(key) {
       return /^sk-or-[0-9A-Za-z\-_]{20,}$/.test(key);
+    }
+
+    // Strict guard: only allows OpenRouter's free router or models explicitly ending in :free
+    function isFreeOpenRouterModel(modelId) {
+      if (!modelId) return false;
+      const clean = modelId.trim();
+      return clean === 'openrouter/free' || clean.endsWith(':free');
     }
 
     // --- IOS PICTURE-IN-PICTURE (SYNCHRONOUS USER ACTIVATION) ---
@@ -840,7 +847,12 @@
       initPiPStream();
 
       apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
-      modelIdInput.value = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
+      const savedModel = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
+      modelIdInput.value = isFreeOpenRouterModel(savedModel) ? savedModel : DEFAULT_PRIMARY_MODEL;
+      if (!isFreeOpenRouterModel(savedModel)) {
+        safeSetStorage('openrouter_model_id', DEFAULT_PRIMARY_MODEL);
+      }
+
       rulesetInput.value = localStorage.getItem('saved_ruleset') || 'You are a helpful assistant processing user commands and actions.';
       summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
       const storedLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
@@ -923,6 +935,10 @@
       }
 
       const chosenModel = modelIdInput.value.trim() || DEFAULT_PRIMARY_MODEL;
+      if (!isFreeOpenRouterModel(chosenModel)) {
+        alert('Free-Only Protection: Your Model ID must be "openrouter/free" or end with ":free" (for example, "google/gemma-4-31b-it:free") so you are never billed.');
+        return;
+      }
 
       const prevSummary = localStorage.getItem('saved_summary') || '';
       if (prevSummary && prevSummary !== summaryInput.value) {
@@ -942,7 +958,7 @@
       ledgerPopoutTextarea.value = ledgerInput.value;
 
       refreshAllSlotLabels();
-      alert('All documents and OpenRouter settings saved!');
+      alert('All documents and Free OpenRouter settings saved!');
       toggleDrawer();
     }
 
@@ -1139,9 +1155,48 @@
       }
     }
 
-    // --- STREAMING HELPER: OPENROUTER CHAT COMPLETIONS SSE + JSON SCHEMA ---
-    async function streamOpenRouterResponse(modelId, cleanKey, systemPromptText, dynamicUserPayload) {
+    // Extracts the first valid JSON object even if a free model wraps it in markdown or extra text
+    function extractJsonPayload(rawText) {
+      const stripped = rawText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      try {
+        return JSON.parse(stripped);
+      } catch (e) {
+        const firstBrace = stripped.indexOf('{');
+        const lastBrace = stripped.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          return JSON.parse(stripped.slice(firstBrace, lastBrace + 1));
+        }
+        throw e;
+      }
+    }
+
+    // --- SINGLE-REQUEST STREAMING HELPER: SERVER-SIDE OPENROUTER FALLBACK ---
+    async function streamSingleOpenRouterRequest(freeModelsList, cleanKey, systemPromptText, dynamicUserPayload) {
+      for (const m of freeModelsList) {
+        if (!isFreeOpenRouterModel(m)) {
+          throw new Error(`Blocked non-free model "${m}". Only ":free" models or "openrouter/free" are permitted.`);
+        }
+      }
+
       const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+      // Passing `models` (max 3) tells OpenRouter's server to handle fallbacks in 1 single HTTP request
+      const requestBody = {
+        model: freeModelsList[0],
+        models: freeModelsList.slice(0, 3),
+        stream: true,
+        reasoning: {
+          effort: 'medium',
+          exclude: true
+        },
+        messages: [
+          { role: 'system', content: systemPromptText },
+          { role: 'user', content: dynamicUserPayload }
+        ]
+      };
 
       const response = await fetch(url, {
         method: 'POST',
@@ -1152,44 +1207,7 @@
           'Authorization': `Bearer ${cleanKey}`,
           'X-Title': 'Command Console'
         },
-        body: JSON.stringify({
-          model: modelId,
-          stream: true,
-          reasoning: {
-            effort: 'medium',
-            exclude: true
-          },
-          messages: [
-            { role: 'system', content: systemPromptText },
-            { role: 'user', content: dynamicUserPayload }
-          ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: 'game_turn_response',
-              strict: true,
-              schema: {
-                type: 'object',
-                properties: {
-                  chat_response: {
-                    type: 'string',
-                    description: 'ONLY the in-character narrative/game response for the player. Never include meta-commentary, JSON notes, or self-corrections.'
-                  },
-                  updated_summary: {
-                    type: 'string',
-                    description: 'The updated narrative summary of plot events, decisions, and active quests (excluding character stats, gear, XP, and NPC rosters, which belong in updated_ledger).'
-                  },
-                  updated_ledger: {
-                    type: 'string',
-                    description: "Return 'NO_CHANGE' if no stats, HP, XP, gold, gear, or NPC relationships changed this turn; otherwise return the complete updated character state ledger."
-                  }
-                },
-                required: ['chat_response', 'updated_summary', 'updated_ledger'],
-                additionalProperties: false
-              }
-            }
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -1209,7 +1227,7 @@
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let assembledJsonText = '';
-      let actualModel = modelId;
+      let actualModel = freeModelsList[0];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1232,6 +1250,7 @@
             }
             if (chunkObj.model) {
               actualModel = chunkObj.model;
+              pipState.model = actualModel;
             }
             const deltaContent = chunkObj.choices?.[0]?.delta?.content;
             if (deltaContent) {
@@ -1250,19 +1269,13 @@
         throw new Error('Empty stream received from OpenRouter.');
       }
 
-      // Strip accidental markdown code fences if a fallback model wraps its JSON
-      const cleanedJsonText = assembledJsonText
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-
       return {
-        parsedResult: JSON.parse(cleanedJsonText),
+        parsedResult: extractJsonPayload(assembledJsonText),
         usedModel: actualModel
       };
     }
 
-    // --- CORE WORKFLOW: SEND TO OPENROUTER ---
+    // --- CORE WORKFLOW: GUARANTEED 1 API REQUEST PER TURN ---
     async function handleSend() {
       if (isSending) return;
 
@@ -1286,6 +1299,13 @@
         return;
       }
 
+      const configuredModel = (localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL).trim();
+      if (!isFreeOpenRouterModel(configuredModel)) {
+        alert('Free-Only Protection: Your configured model does not end with ":free" or equal "openrouter/free". Please open "Files" and select a free model.');
+        toggleDrawer();
+        return;
+      }
+
       if (!promptText) return;
 
       isSending = true;
@@ -1297,7 +1317,7 @@
       pipState = {
         status: 'THINKING',
         subtext: `Prompt: "${promptText}"`,
-        model: 'Connecting...',
+        model: configuredModel,
         bytesReceived: 0,
         startTime: Date.now()
       };
@@ -1307,7 +1327,6 @@
       appendMessageToScreen('user', promptText);
       recordMessage('user', promptText);
 
-      const primaryModel = (localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL).trim();
       const currentRuleset = localStorage.getItem('saved_ruleset') || 'No specific rules provided.';
       const currentSummary = localStorage.getItem('saved_summary') || 'No previous conversation summary.';
       const currentLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
@@ -1318,7 +1337,12 @@ ${currentRuleset}
 
 === SYSTEM INSTRUCTIONS ===
 1. Process the USER COMMAND / ACTION while strictly obeying the RULESET DOCUMENT and maintaining continuity with the SAVED CHAT SUMMARY DOCUMENT, SAVED LEDGER DOCUMENT, and RECENT CONVERSATION (LAST 2 TURNS).
-2. Output ONLY valid JSON matching the requested schema with keys: "chat_response", "updated_summary", and "updated_ledger".
+2. Respond ONLY with a raw, valid JSON object (no markdown code blocks, no backticks, no extra text outside the JSON) containing these exact three keys:
+{
+  "chat_response": "string",
+  "updated_summary": "string",
+  "updated_ledger": "string"
+}
 3. Put ONLY your direct, in-character narrative response in the "chat_response" field. Never include thoughts about JSON formatting, rules, or self-corrections.
 4. Place the updated narrative history (plot events, decisions, active quests, current location) in the "updated_summary" field. Keep character stats, gear, XP, gold, and NPC relationship rosters OUT of the summary and put them exclusively in "updated_ledger". Do NOT mention which AI model generated the response in either document.
 5. For "updated_ledger": if NO stats, HP, XP, gold, gear/inventory, or known NPCs/relationships changed on this turn, output ONLY the exact string "NO_CHANGE" to save output tokens. Otherwise, output the complete, updated character state ledger preserving all unchanged entries.`;
@@ -1336,32 +1360,19 @@ ${recentWindow}
 ${promptText}`;
 
       try {
-        const modelsToTry = Array.from(new Set([primaryModel, 'google/gemini-2.5-flash', 'openrouter/auto']));
-        let resultBundle = null;
-        let lastError = null;
+        // Up to 3 free models sent in a SINGLE HTTP request using OpenRouter's server-side `models` array
+        const freeModelsList = Array.from(new Set([
+          configuredModel,
+          'google/gemma-4-31b-it:free',
+          'openrouter/free'
+        ])).filter(isFreeOpenRouterModel).slice(0, 3);
 
-        for (const modelId of modelsToTry) {
-          pipState.model = modelId;
-          pipState.bytesReceived = 0;
-          drawPiPCanvas();
-
-          try {
-            resultBundle = await streamOpenRouterResponse(modelId, cleanKey, staticSystemPrompt, dynamicPayload);
-            break;
-          } catch (err) {
-            if (err.status === 503 || err.status === 429 || err.status === 502 || err.message.includes('overloaded') || err.message.includes('Load failed') || err.message.includes('Failed to fetch')) {
-              lastError = err.message;
-              continue;
-            }
-            throw err;
-          }
-        }
-
-        if (!resultBundle) {
-          throw new Error(lastError || 'All fallback models are currently busy.');
-        }
-
-        const { parsedResult, usedModel } = resultBundle;
+        const { parsedResult, usedModel } = await streamSingleOpenRouterRequest(
+          freeModelsList,
+          cleanKey,
+          staticSystemPrompt,
+          dynamicPayload
+        );
 
         appendMessageToScreen('ai', parsedResult.chat_response, usedModel);
         recordMessage('ai', parsedResult.chat_response, usedModel);
