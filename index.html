@@ -6,8 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://generativelanguage.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none';">
-  <title>Gemini Stateful App</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://openrouter.ai; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none';">
+  <title>Command Console (OpenRouter)</title>
 
   <style>
     * {
@@ -104,8 +104,8 @@
     /* HIDDEN ELEMENTS FOR CANVAS-TO-VIDEO PiP */
     #pip-canvas, #pip-video {
       position: fixed;
-      width: 1px;
-      height: 1px;
+      width: 2px;
+      height: 2px;
       opacity: 0.01;
       pointer-events: none;
       bottom: 0;
@@ -319,7 +319,7 @@
       margin-top: -6px;
     }
 
-    textarea.doc-box, input[type="password"] {
+    textarea.doc-box, input[type="password"], input[type="text"] {
       width: 100%;
       background-color: #1f1f1f;
       color: white;
@@ -448,7 +448,7 @@
 
   <!-- HIDDEN CANVAS + VIDEO FOR IOS PICTURE-IN-PICTURE -->
   <canvas id="pip-canvas" width="480" height="270"></canvas>
-  <video id="pip-video" muted playsinline></video>
+  <video id="pip-video" muted playsinline autoplay></video>
 
   <!-- FLOATING POP-OUT LEDGER (Live-Synced with AI Payload & Auto-Saved) -->
   <div id="ledger-popout" class="floating-popout">
@@ -485,19 +485,23 @@
     </div>
 
     <div class="section-card">
-      <label for="api-key-input">Gemini API Key (Sent via secure header):</label>
-      <input type="password" id="api-key-input" autocomplete="off" spellcheck="false" placeholder="Paste your AI Studio key here...">
+      <label for="api-key-input">OpenRouter API Key (Sent via Bearer header):</label>
+      <input type="password" id="api-key-input" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-...">
+
+      <label for="model-id-input" style="margin-top: 4px;">Primary OpenRouter Model ID:</label>
+      <span class="sub-label">Examples: google/gemini-2.5-pro, anthropic/claude-sonnet-4, deepseek/deepseek-r1</span>
+      <input type="text" id="model-id-input" autocomplete="off" spellcheck="false" placeholder="google/gemini-2.5-pro">
     </div>
 
     <div class="section-card">
       <label for="ruleset-input">Ruleset Document (Cached system instruction):</label>
-      <textarea class="doc-box" id="ruleset-input" placeholder="Enter the permanent rules, functions, or instructions Gemini must always follow..."></textarea>
+      <textarea class="doc-box" id="ruleset-input" placeholder="Enter the permanent rules, functions, or instructions the AI must always follow..."></textarea>
     </div>
 
     <!-- SUMMARY DOCUMENT + AUTO ROLLING SAVES + INDEPENDENT MANUAL SAVES -->
     <div class="section-card">
       <label for="summary-input">Saved Chat Summary Document (Auto-updates every turn):</label>
-      <textarea class="doc-box" id="summary-input" placeholder="Gemini will automatically write and overwrite the narrative summary here..."></textarea>
+      <textarea class="doc-box" id="summary-input" placeholder="The AI will automatically write and overwrite the narrative summary here..."></textarea>
 
       <label style="margin-top: 4px;">Summary Auto-Rolling Backups (Last 3 AI Turns):</label>
       <div class="slot-grid">
@@ -559,7 +563,7 @@
       </div>
     </div>
 
-    <button class="save-btn" onclick="saveDocuments()">Save All Active Documents & API Key</button>
+    <button class="save-btn" onclick="saveDocuments()">Save All Active Documents & Settings</button>
 
     <button class="secondary-btn" onclick="openTranscriptModal()">View / Copy Full Chat Log</button>
 
@@ -584,6 +588,7 @@
     const sendBtn = document.getElementById('send-btn');
     const drawer = document.getElementById('drawer');
     const apiKeyInput = document.getElementById('api-key-input');
+    const modelIdInput = document.getElementById('model-id-input');
     const rulesetInput = document.getElementById('ruleset-input');
     const summaryInput = document.getElementById('summary-input');
     const ledgerInput = document.getElementById('ledger-input');
@@ -599,10 +604,11 @@
 
     const MAX_VISIBLE_BUBBLES = 30;
     const MAX_STORED_TRANSCRIPT = 1000;
+    const DEFAULT_PRIMARY_MODEL = 'google/gemini-2.5-pro';
     let visualChatCache = [];
     let fullTranscriptCache = [];
+    let isSending = false;
 
-    // Safe localStorage wrapper to prevent QuotaExceededError crashes
     function safeSetStorage(key, value) {
       try {
         localStorage.setItem(key, value);
@@ -613,12 +619,11 @@
       }
     }
 
-    // Validates both newer AI Studio auth keys (AQ. ...) and classic keys (AIza...)
-    function isValidGeminiKeyFormat(key) {
-      return /^(AIza|AQ\.)[0-9A-Za-z.\-_]{20,}$/.test(key);
+    function isValidOpenRouterKeyFormat(key) {
+      return /^sk-or-[0-9A-Za-z\-_]{20,}$/.test(key);
     }
 
-    // --- IOS PICTURE-IN-PICTURE (CANVAS-TO-VIDEO WITH BATTERY-SAVING IDLE SLEEP) ---
+    // --- IOS PICTURE-IN-PICTURE (SYNCHRONOUS USER ACTIVATION) ---
     let pipState = {
       status: 'READY',
       subtext: 'Waiting for your next command...',
@@ -628,6 +633,18 @@
     };
     let pipStreamInitialized = false;
     let pipIntervalId = null;
+
+    function initPiPStream() {
+      if (pipStreamInitialized) return;
+      try {
+        drawPiPCanvas();
+        const stream = pipCanvas.captureStream(5);
+        pipVideo.srcObject = stream;
+        pipStreamInitialized = true;
+      } catch (e) {
+        console.warn('PiP stream init deferred:', e);
+      }
+    }
 
     function isPiPActive() {
       return Boolean(document.pictureInPictureElement) || pipVideo.webkitPresentationMode === 'picture-in-picture';
@@ -660,7 +677,7 @@
 
       if (pipState.model) {
         ctx.fillStyle = '#90caf9';
-        ctx.font = '16px monospace';
+        ctx.font = '15px monospace';
         ctx.fillText(`Model: ${pipState.model}`, 24, 86);
       }
 
@@ -720,31 +737,30 @@
       updatePiPTimerState();
     });
 
-    async function togglePiP() {
+    function togglePiP() {
       try {
         if (isPiPActive()) {
           if (document.exitPictureInPicture) {
-            await document.exitPictureInPicture();
+            document.exitPictureInPicture().catch(() => {});
           } else if (pipVideo.webkitSetPresentationMode) {
             pipVideo.webkitSetPresentationMode('inline');
           }
           return;
         }
 
+        initPiPStream();
         drawPiPCanvas();
 
-        if (!pipStreamInitialized) {
-          const stream = pipCanvas.captureStream(5);
-          pipVideo.srcObject = stream;
-          pipStreamInitialized = true;
+        if (pipVideo.paused) {
+          pipVideo.play().catch(() => {});
         }
 
-        await pipVideo.play();
-
-        if (pipVideo.requestPictureInPicture) {
-          await pipVideo.requestPictureInPicture();
-        } else if (pipVideo.webkitSetPresentationMode) {
+        if (pipVideo.webkitSetPresentationMode) {
           pipVideo.webkitSetPresentationMode('picture-in-picture');
+        } else if (pipVideo.requestPictureInPicture) {
+          pipVideo.requestPictureInPicture().catch(err => {
+            alert('Could not start PiP: ' + err.message);
+          });
         } else {
           alert('Picture-in-Picture is not supported in this browser view. Try opening the app in Safari.');
         }
@@ -821,9 +837,10 @@
     // --- INITIALIZATION ---
     window.onload = function() {
       requestWakeLock();
-      drawPiPCanvas();
+      initPiPStream();
 
-      apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+      apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
+      modelIdInput.value = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
       rulesetInput.value = localStorage.getItem('saved_ruleset') || 'You are a helpful assistant processing user commands and actions.';
       summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
       const storedLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
@@ -885,6 +902,8 @@
 
     // --- DRAWER & DOCUMENT MANAGEMENT ---
     function toggleDrawer() {
+      apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
+      modelIdInput.value = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
       summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
       ledgerInput.value = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
       refreshAllSlotLabels();
@@ -898,10 +917,12 @@
 
     function saveDocuments() {
       const cleanedKey = apiKeyInput.value.replace(/\s+/g, '');
-      if (cleanedKey && !isValidGeminiKeyFormat(cleanedKey)) {
-        alert('Warning: That does not look like a valid Google AI Studio API key (it should start with "AQ." or "AIza"). Please double-check your pasted key.');
+      if (cleanedKey && !isValidOpenRouterKeyFormat(cleanedKey)) {
+        alert('Warning: That does not look like a valid OpenRouter API key (it should start with "sk-or-"). Please double-check your pasted key.');
         return;
       }
+
+      const chosenModel = modelIdInput.value.trim() || DEFAULT_PRIMARY_MODEL;
 
       const prevSummary = localStorage.getItem('saved_summary') || '';
       if (prevSummary && prevSummary !== summaryInput.value) {
@@ -913,14 +934,15 @@
         pushAutoSave('ledger', prevLedger);
       }
 
-      safeSetStorage('gemini_api_key', cleanedKey);
+      safeSetStorage('openrouter_api_key', cleanedKey);
+      safeSetStorage('openrouter_model_id', chosenModel);
       safeSetStorage('saved_ruleset', rulesetInput.value);
       safeSetStorage('saved_summary', summaryInput.value);
       safeSetStorage('saved_ledger', ledgerInput.value);
       ledgerPopoutTextarea.value = ledgerInput.value;
 
       refreshAllSlotLabels();
-      alert('All documents and API Key saved!');
+      alert('All documents and OpenRouter settings saved!');
       toggleDrawer();
     }
 
@@ -1087,7 +1109,7 @@
         transcriptText.value = fullTranscriptCache.map(entry => {
           const speaker = entry.role === 'user'
             ? 'PLAYER'
-            : `GEMINI${entry.model ? ` (${entry.model})` : ''}`;
+            : `AI${entry.model ? ` (${entry.model})` : ''}`;
           return `[${entry.time}] ${speaker}:\n${entry.text}\n----------------------------------------`;
         }).join('\n\n');
       }
@@ -1117,14 +1139,9 @@
       }
     }
 
-    // --- STREAMING HELPER: CACHED SYSTEM INSTRUCTION + TOKEN-EFFICIENT LEDGER ---
-    async function streamGeminiResponse(modelName, cleanKey, systemPromptText, dynamicUserPayload) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse`;
-
-      const isGemini4 = modelName.startsWith('gemini-4');
-      const thinkingCfg = isGemini4
-        ? { includeThoughts: false, thinkingLevel: 'MEDIUM' }
-        : { includeThoughts: false, thinkingBudget: 1024 };
+    // --- STREAMING HELPER: OPENROUTER CHAT COMPLETIONS SSE + JSON SCHEMA ---
+    async function streamOpenRouterResponse(modelId, cleanKey, systemPromptText, dynamicUserPayload) {
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
 
       const response = await fetch(url, {
         method: 'POST',
@@ -1132,33 +1149,44 @@
         credentials: 'omit',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': cleanKey
+          'Authorization': `Bearer ${cleanKey}`,
+          'X-Title': 'Command Console'
         },
         body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPromptText }]
+          model: modelId,
+          stream: true,
+          reasoning: {
+            effort: 'medium',
+            exclude: true
           },
-          contents: [{ parts: [{ text: dynamicUserPayload }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            thinkingConfig: thinkingCfg,
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                chat_response: {
-                  type: "STRING",
-                  description: "ONLY the in-character narrative/game response for the player. Never include meta-commentary, JSON notes, or self-corrections."
+          messages: [
+            { role: 'system', content: systemPromptText },
+            { role: 'user', content: dynamicUserPayload }
+          ],
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'game_turn_response',
+              strict: true,
+              schema: {
+                type: 'object',
+                properties: {
+                  chat_response: {
+                    type: 'string',
+                    description: 'ONLY the in-character narrative/game response for the player. Never include meta-commentary, JSON notes, or self-corrections.'
+                  },
+                  updated_summary: {
+                    type: 'string',
+                    description: 'The updated narrative summary of plot events, decisions, and active quests (excluding character stats, gear, XP, and NPC rosters, which belong in updated_ledger).'
+                  },
+                  updated_ledger: {
+                    type: 'string',
+                    description: "Return 'NO_CHANGE' if no stats, HP, XP, gold, gear, or NPC relationships changed this turn; otherwise return the complete updated character state ledger."
+                  }
                 },
-                updated_summary: {
-                  type: "STRING",
-                  description: "The updated narrative summary of plot events, decisions, and active quests (excluding character stats, gear, XP, and NPC rosters, which belong in updated_ledger)."
-                },
-                updated_ledger: {
-                  type: "STRING",
-                  description: "Return 'NO_CHANGE' if no stats, HP, XP, gold, gear, or NPC relationships changed this turn; otherwise return the complete updated character state ledger."
-                }
-              },
-              required: ["chat_response", "updated_summary", "updated_ledger"]
+                required: ['chat_response', 'updated_summary', 'updated_ledger'],
+                additionalProperties: false
+              }
             }
           }
         })
@@ -1181,7 +1209,7 @@
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let assembledJsonText = '';
-      let modelVersion = modelName;
+      let actualModel = modelId;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1199,57 +1227,68 @@
 
           try {
             const chunkObj = JSON.parse(jsonStr);
-            if (chunkObj.modelVersion) {
-              modelVersion = chunkObj.modelVersion;
+            if (chunkObj.error && chunkObj.error.message) {
+              throw new Error(chunkObj.error.message);
             }
-            if (chunkObj.candidates && chunkObj.candidates[0] && chunkObj.candidates[0].content && chunkObj.candidates[0].content.parts) {
-              for (const part of chunkObj.candidates[0].content.parts) {
-                if (part.text && !part.thought) {
-                  assembledJsonText += part.text;
-                  pipState.bytesReceived = assembledJsonText.length;
-                }
-              }
+            if (chunkObj.model) {
+              actualModel = chunkObj.model;
+            }
+            const deltaContent = chunkObj.choices?.[0]?.delta?.content;
+            if (deltaContent) {
+              assembledJsonText += deltaContent;
+              pipState.bytesReceived = assembledJsonText.length;
             }
           } catch (parseChunkErr) {
-            // Ignore partial SSE lines until complete
+            if (parseChunkErr.message && !parseChunkErr.message.includes('JSON')) {
+              throw parseChunkErr;
+            }
           }
         }
       }
 
       if (!assembledJsonText) {
-        throw new Error('Empty stream received from Gemini.');
+        throw new Error('Empty stream received from OpenRouter.');
       }
 
+      // Strip accidental markdown code fences if a fallback model wraps its JSON
+      const cleanedJsonText = assembledJsonText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
       return {
-        parsedResult: JSON.parse(assembledJsonText),
-        usedModel: modelVersion
+        parsedResult: JSON.parse(cleanedJsonText),
+        usedModel: actualModel
       };
     }
 
-    // --- CORE WORKFLOW: SEND TO GEMINI ---
+    // --- CORE WORKFLOW: SEND TO OPENROUTER ---
     async function handleSend() {
+      if (isSending) return;
+
       if (wakeLockEnabled && !wakeLock) {
         requestWakeLock();
       }
 
       const promptText = userInput.value.trim();
-      const apiKey = localStorage.getItem('gemini_api_key');
+      const apiKey = localStorage.getItem('openrouter_api_key');
 
       if (!apiKey) {
-        alert('Please tap "Files" and enter your Gemini API Key first.');
+        alert('Please tap "Files" and enter your OpenRouter API Key first.');
         toggleDrawer();
         return;
       }
 
       const cleanKey = apiKey.replace(/\s+/g, '');
-      if (!isValidGeminiKeyFormat(cleanKey)) {
-        alert('Invalid API Key format detected. Please open "Files" and verify your Google AI Studio key.');
+      if (!isValidOpenRouterKeyFormat(cleanKey)) {
+        alert('Invalid OpenRouter API Key format detected. Please open "Files" and verify your sk-or-... key.');
         toggleDrawer();
         return;
       }
 
       if (!promptText) return;
 
+      isSending = true;
       userInput.value = '';
       autoResizeInput();
       sendBtn.disabled = true;
@@ -1268,6 +1307,7 @@
       appendMessageToScreen('user', promptText);
       recordMessage('user', promptText);
 
+      const primaryModel = (localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL).trim();
       const currentRuleset = localStorage.getItem('saved_ruleset') || 'No specific rules provided.';
       const currentSummary = localStorage.getItem('saved_summary') || 'No previous conversation summary.';
       const currentLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
@@ -1278,9 +1318,10 @@ ${currentRuleset}
 
 === SYSTEM INSTRUCTIONS ===
 1. Process the USER COMMAND / ACTION while strictly obeying the RULESET DOCUMENT and maintaining continuity with the SAVED CHAT SUMMARY DOCUMENT, SAVED LEDGER DOCUMENT, and RECENT CONVERSATION (LAST 2 TURNS).
-2. Put ONLY your direct, in-character narrative response in the "chat_response" field. Never include thoughts about JSON formatting, rules, or self-corrections.
-3. Place the updated narrative history (plot events, decisions, active quests, current location) in the "updated_summary" field. Keep character stats, gear, XP, gold, and NPC relationship rosters OUT of the summary and put them exclusively in "updated_ledger". Do NOT mention which AI model generated the response in either document.
-4. For "updated_ledger": if NO stats, HP, XP, gold, gear/inventory, or known NPCs/relationships changed on this turn, output ONLY the exact string "NO_CHANGE" to save output tokens. Otherwise, output the complete, updated character state ledger preserving all unchanged entries.`;
+2. Output ONLY valid JSON matching the requested schema with keys: "chat_response", "updated_summary", and "updated_ledger".
+3. Put ONLY your direct, in-character narrative response in the "chat_response" field. Never include thoughts about JSON formatting, rules, or self-corrections.
+4. Place the updated narrative history (plot events, decisions, active quests, current location) in the "updated_summary" field. Keep character stats, gear, XP, gold, and NPC relationship rosters OUT of the summary and put them exclusively in "updated_ledger". Do NOT mention which AI model generated the response in either document.
+5. For "updated_ledger": if NO stats, HP, XP, gold, gear/inventory, or known NPCs/relationships changed on this turn, output ONLY the exact string "NO_CHANGE" to save output tokens. Otherwise, output the complete, updated character state ledger preserving all unchanged entries.`;
 
       const dynamicPayload = `=== SAVED CHAT SUMMARY DOCUMENT (NARRATIVE HISTORY) ===
 ${currentSummary}
@@ -1295,20 +1336,20 @@ ${recentWindow}
 ${promptText}`;
 
       try {
-        const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+        const modelsToTry = Array.from(new Set([primaryModel, 'google/gemini-2.5-flash', 'openrouter/auto']));
         let resultBundle = null;
         let lastError = null;
 
-        for (const modelName of modelsToTry) {
-          pipState.model = modelName;
+        for (const modelId of modelsToTry) {
+          pipState.model = modelId;
           pipState.bytesReceived = 0;
           drawPiPCanvas();
 
           try {
-            resultBundle = await streamGeminiResponse(modelName, cleanKey, staticSystemPrompt, dynamicPayload);
+            resultBundle = await streamOpenRouterResponse(modelId, cleanKey, staticSystemPrompt, dynamicPayload);
             break;
           } catch (err) {
-            if (err.status === 503 || err.status === 429 || err.message.includes('high demand') || err.message.includes('Load failed') || err.message.includes('Failed to fetch')) {
+            if (err.status === 503 || err.status === 429 || err.status === 502 || err.message.includes('overloaded') || err.message.includes('Load failed') || err.message.includes('Failed to fetch')) {
               lastError = err.message;
               continue;
             }
@@ -1346,10 +1387,10 @@ ${promptText}`;
           safeSetStorage('saved_summary', newSummary);
           summaryInput.value = newSummary;
         } else {
-          appendMessageToScreen('ai', '[System Notice: Gemini returned an incomplete summary on this turn, so your previous summary was automatically protected and kept intact.]');
+          appendMessageToScreen('ai', '[System Notice: The AI returned an incomplete summary on this turn, so your previous summary was automatically protected and kept intact.]');
         }
 
-        // 2. Update Ledger (Skips overwrite & backup rotation if Gemini returned NO_CHANGE)
+        // 2. Update Ledger (Skips overwrite & backup rotation if AI returned NO_CHANGE)
         const oldLedger = localStorage.getItem('saved_ledger') || '';
         const newLedger = (parsedResult.updated_ledger || '').trim();
 
@@ -1363,13 +1404,13 @@ ${promptText}`;
           ledgerInput.value = newLedger;
           ledgerPopoutTextarea.value = newLedger;
         } else {
-          appendMessageToScreen('ai', '[System Notice: Gemini returned an incomplete ledger on this turn, so your previous ledger was automatically protected and kept intact.]');
+          appendMessageToScreen('ai', '[System Notice: The AI returned an incomplete ledger on this turn, so your previous ledger was automatically protected and kept intact.]');
         }
 
       } catch (error) {
         userInput.value = promptText;
         autoResizeInput();
-        appendMessageToScreen('ai', 'Error communicating with Gemini: ' + error.message);
+        appendMessageToScreen('ai', 'Error communicating with OpenRouter: ' + error.message);
 
         pipState = {
           status: 'ERROR',
@@ -1381,6 +1422,7 @@ ${promptText}`;
         drawPiPCanvas();
         updatePiPTimerState();
       } finally {
+        isSending = false;
         sendBtn.disabled = false;
         sendBtn.textContent = 'Send';
       }
