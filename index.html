@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Gemini Stateful App</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* TOP NAVIGATION BAR */
+    header {
+      background-color: #1f1f1f;
+      padding: 12px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #333;
+      gap: 8px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    header h1 {
+      font-size: 17px;
+    }
+
+    #wake-badge {
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 10px;
+      background-color: #2e7d32;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+    }
+
+    #wake-badge.off {
+      background-color: #444;
+      color: #bbb;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .nav-btn {
+      background-color: #333;
+      color: white;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .notes-toggle-btn {
+      background-color: #4a3f1f;
+      border: 1px solid #8a732a;
+      color: #ffe082;
+    }
+
+    /* FLOATING POP-OUT NOTES PANEL */
+    #notes-popout {
+      position: fixed;
+      top: 56px;
+      left: 10px;
+      right: 10px;
+      height: 36vh;
+      background-color: #1e1c16;
+      border: 1px solid #8a732a;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
+      display: none;
+      flex-direction: column;
+      z-index: 8;
+      overflow: hidden;
+    }
+
+    .notes-header {
+      background-color: #2c281c;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #4d4323;
+    }
+
+    .notes-header span {
+      font-size: 13px;
+      font-weight: bold;
+      color: #ffe082;
+    }
+
+    #notes-textarea {
+      flex: 1;
+      width: 100%;
+      background-color: #1e1c16;
+      color: #fff8e1;
+      border: none;
+      padding: 10px 12px;
+      font-size: 15px;
+      line-height: 1.4;
+      resize: none;
+      outline: none;
+    }
+
+    /* MAIN CHAT LOG DISPLAY */
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 12px;
+      border-radius: 12px;
+      line-height: 1.4;
+      font-size: 15px;
+      white-space: pre-wrap;
+    }
+
+    .user-message {
+      background-color: #0b57d0;
+      align-self: flex-end;
+    }
+
+    .ai-message {
+      background-color: #2b2b2b;
+      align-self: flex-start;
+    }
+
+    .model-tag {
+      display: block;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #3d3d3d;
+      font-size: 11px;
+      color: #8e9aaf;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    /* AUTO-EXPANDING SCROLLABLE INPUT BAR (CAPPED AT 3 LINES) */
+    #input-container {
+      background-color: #1f1f1f;
+      padding: 10px 15px 25px 15px;
+      display: flex;
+      align-items: flex-end; /* Keeps Send button anchored cleanly at the bottom right as box grows */
+      gap: 10px;
+      border-top: 1px solid #333;
+    }
+
+    #user-input {
+      flex: 1;
+      background-color: #2b2b2b;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 16px;
+      line-height: 22px; /* Exact line height for 3-line calculation */
+      min-height: 44px; /* 1 line (22px) + 20px vertical padding + 2px border */
+      max-height: 88px; /* 3 lines (66px) + 20px vertical padding + 2px border */
+      overflow-y: auto; /* Scrollable once text exceeds 3 lines */
+      resize: none;
+      outline: none;
+    }
+
+    #send-btn {
+      background-color: #0b57d0;
+      color: white;
+      border: none;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    #send-btn:disabled {
+      background-color: #555;
+    }
+
+    /* SETTINGS & SAVED DOCUMENTS DRAWER */
+    #drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      padding: 20px;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 15;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .section-card {
+      background-color: #181818;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      font-size: 13px;
+      color: #bbb;
+      display: block;
+    }
+
+    .sub-label {
+      font-size: 12px;
+      color: #888;
+      margin-top: -6px;
+    }
+
+    textarea.doc-box, input[type="password"] {
+      width: 100%;
+      background-color: #1f1f1f;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    textarea.doc-box {
+      height: 130px;
+      resize: vertical;
+    }
+
+    .save-btn {
+      background-color: #2e7d32;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .slot-card {
+      background-color: #222;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      text-align: center;
+    }
+
+    .slot-title {
+      font-size: 11px;
+      color: #aaa;
+      white-space: pre-line;
+    }
+
+    .slot-btn {
+      background-color: #333;
+      color: #fff;
+      border: 1px solid #4a4a4a;
+      padding: 6px 4px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .slot-btn.save-action {
+      background-color: #1b5e20;
+      border-color: #2e7d32;
+    }
+
+    .secondary-btn {
+      background-color: #283593;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .danger-btn {
+      background-color: #c62828;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+
+    /* FULL CHAT LOG MODAL */
+    #transcript-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      padding: 20px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 20;
+    }
+
+    #transcript-text {
+      flex: 1;
+      width: 100%;
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      resize: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header>
+    <div class="header-left">
+      <h1>Command Console</h1>
+      <button id="wake-badge" onclick="toggleWakeLock()">Awake: ON</button>
+    </div>
+    <div class="header-actions">
+      <button class="nav-btn notes-toggle-btn" onclick="toggleNotes()">Notes</button>
+      <button class="nav-btn" onclick="toggleDrawer()">Files & Settings</button>
+    </div>
+  </header>
+
+  <!-- FLOATING POP-OUT NOTES (Local Only, Does Not Pass to AI) -->
+  <div id="notes-popout">
+    <div class="notes-header">
+      <span>Session Notes (Auto-Saved Locally • Private)</span>
+      <button class="nav-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleNotes()">Hide</button>
+    </div>
+    <textarea id="notes-textarea" placeholder="Tap here to jot down NPC names, clues, HP, or reminders while playing..."></textarea>
+  </div>
+
+  <!-- MAIN CHAT LOG DISPLAY -->
+  <div id="chat-container"></div>
+
+  <!-- AUTO-EXPANDING SCROLLABLE INPUT AREA (UP TO 3 LINES) -->
+  <div id="input-container">
+    <textarea id="user-input" rows="1" placeholder="Enter command, function, or action..."></textarea>
+    <button id="send-btn" onclick="handleSend()">Send</button>
+  </div>
+
+  <!-- SETTINGS & SAVED DOCUMENTS DRAWER -->
+  <div id="drawer">
+    <div class="drawer-header">
+      <h2>Saved Documents & Setup</h2>
+      <button class="nav-btn" onclick="toggleDrawer()">Close</button>
+    </div>
+
+    <div class="section-card">
+      <label for="api-key-input">Gemini API Key:</label>
+      <input type="password" id="api-key-input" placeholder="Paste your AI Studio key here...">
+    </div>
+
+    <div class="section-card">
+      <label for="ruleset-input">Ruleset Document (Sent with every prompt):</label>
+      <textarea class="doc-box" id="ruleset-input" placeholder="Enter the permanent rules, functions, or instructions Gemini must always follow..."></textarea>
+    </div>
+
+    <!-- SUMMARY DOCUMENT + AUTO ROLLING SAVES + INDEPENDENT MANUAL SAVES -->
+    <div class="section-card">
+      <label for="summary-input">Saved Chat Summary Document (Auto-updates every turn):</label>
+      <textarea class="doc-box" id="summary-input" placeholder="Gemini will automatically write and overwrite the running summary here..."></textarea>
+
+      <label style="margin-top: 4px;">Auto-Rolling Backups (Last 3 AI Turns):</label>
+      <div class="slot-grid">
+        <button class="slot-btn" id="auto-sum-1" onclick="restoreAutoSave('summary', 0)">Auto 1\n(Empty)</button>
+        <button class="slot-btn" id="auto-sum-2" onclick="restoreAutoSave('summary', 1)">Auto 2\n(Empty)</button>
+        <button class="slot-btn" id="auto-sum-3" onclick="restoreAutoSave('summary', 2)">Auto 3\n(Empty)</button>
+      </div>
+
+      <label style="margin-top: 6px;">Manual Summary Saves (Never touched by AI):</label>
+      <div class="slot-grid">
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-0">Slot 1\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 0)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 0)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-1">Slot 2\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 1)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 1)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-2">Slot 3\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 2)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 2)">Load</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEDGER DOCUMENT (Identical save structure, ready for future AI hookup) -->
+    <div class="section-card">
+      <label for="ledger-input">Ledger Document (Ready for future AI integration):</label>
+      <span class="sub-label">Currently stored locally; ready to connect to Gemini later.</span>
+      <textarea class="doc-box" id="ledger-input" placeholder="Character stats, inventory, gold, or mechanical ledger..."></textarea>
+
+      <label style="margin-top: 4px;">Ledger Auto-Rolling Backups (Last 3 Saves):</label>
+      <div class="slot-grid">
+        <button class="slot-btn" id="auto-led-1" onclick="restoreAutoSave('ledger', 0)">Auto 1\n(Empty)</button>
+        <button class="slot-btn" id="auto-led-2" onclick="restoreAutoSave('ledger', 1)">Auto 2\n(Empty)</button>
+        <button class="slot-btn" id="auto-led-3" onclick="restoreAutoSave('ledger', 2)">Auto 3\n(Empty)</button>
+      </div>
+
+      <label style="margin-top: 6px;">Manual Ledger Saves:</label>
+      <div class="slot-grid">
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-0">Slot 1\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 0)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 0)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-1">Slot 2\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 1)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 1)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-2">Slot 3\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 2)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 2)">Load</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="save-btn" onclick="saveDocuments()">Save All Active Documents & API Key</button>
+
+    <button class="secondary-btn" onclick="openTranscriptModal()">View / Copy Full Chat Log</button>
+
+    <button class="danger-btn" onclick="clearChatLog()">Clear Visual Chat Bubbles (Keeps All Documents & Logs)</button>
+  </div>
+
+  <!-- FULL CHAT LOG MODAL -->
+  <div id="transcript-modal">
+    <div class="drawer-header">
+      <h2>Complete Chat Log</h2>
+      <div style="display: flex; gap: 8px;">
+        <button class="save-btn" style="padding: 8px 12px; margin: 0; font-size: 13px;" onclick="copyTranscript()">Copy All</button>
+        <button class="nav-btn" onclick="closeTranscriptModal()">Close</button>
+      </div>
+    </div>
+    <textarea id="transcript-text" readonly></textarea>
+  </div>
+
+  <script>
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const drawer = document.getElementById('drawer');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const rulesetInput = document.getElementById('ruleset-input');
+    const summaryInput = document.getElementById('summary-input');
+    const ledgerInput = document.getElementById('ledger-input');
+    const notesPopout = document.getElementById('notes-popout');
+    const notesTextarea = document.getElementById('notes-textarea');
+    const wakeBadge = document.getElementById('wake-badge');
+    const transcriptModal = document.getElementById('transcript-modal');
+    const transcriptText = document.getElementById('transcript-text');
+
+    // --- AUTO-EXPANDING INPUT BOX (UP TO 3 LINES, THEN SCROLLABLE) ---
+    function autoResizeInput() {
+      userInput.style.height = 'auto';
+      // 88px = 3 lines (66px) + top/bottom padding (20px) + border (2px)
+      const newHeight = Math.min(userInput.scrollHeight, 88);
+      userInput.style.height = newHeight + 'px';
+    }
+
+    userInput.addEventListener('input', autoResizeInput);
+
+    // --- PREVENT IPHONE AUTO-LOCK (SCREEN WAKE LOCK API) ---
+    let wakeLock = null;
+    let wakeLockEnabled = true;
+
+    async function requestWakeLock() {
+      if (!wakeLockEnabled || !('wakeLock' in navigator)) {
+        updateWakeBadge(false);
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        updateWakeBadge(true);
+        wakeLock.addEventListener('release', () => {
+          updateWakeBadge(false);
+        });
+      } catch (err) {
+        updateWakeBadge(false);
+      }
+    }
+
+    function updateWakeBadge(isActive) {
+      if (isActive) {
+        wakeBadge.textContent = 'Awake: ON';
+        wakeBadge.classList.remove('off');
+      } else {
+        wakeBadge.textContent = 'Awake: OFF';
+        wakeBadge.classList.add('off');
+      }
+    }
+
+    async function toggleWakeLock() {
+      if (wakeLock !== null) {
+        wakeLockEnabled = false;
+        await wakeLock.release();
+        wakeLock = null;
+        updateWakeBadge(false);
+      } else {
+        wakeLockEnabled = true;
+        await requestWakeLock();
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLockEnabled && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    });
+
+    // --- INITIALIZATION ---
+    window.onload = function() {
+      requestWakeLock();
+
+      apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+      rulesetInput.value = localStorage.getItem('saved_ruleset') || 'You are a helpful assistant processing user commands and actions.';
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+      ledgerInput.value = localStorage.getItem('saved_ledger') || '';
+      notesTextarea.value = localStorage.getItem('saved_notes') || '';
+
+      const savedChat = JSON.parse(localStorage.getItem('visual_chat_log') || '[]');
+      savedChat.forEach(msg => appendMessageToScreen(msg.role, msg.text, msg.model));
+
+      if (!localStorage.getItem('full_chat_transcript') && savedChat.length > 0) {
+        const migrated = savedChat.map(m => ({
+          role: m.role,
+          text: m.text,
+          model: m.model || null,
+          time: 'Previous Session'
+        }));
+        localStorage.setItem('full_chat_transcript', JSON.stringify(migrated));
+      }
+
+      refreshAllSlotLabels();
+      autoResizeInput();
+    };
+
+    // --- POP-OUT NOTES (AUTO-SAVING) ---
+    function toggleNotes() {
+      if (notesPopout.style.display === 'flex') {
+        notesPopout.style.display = 'none';
+      } else {
+        notesTextarea.value = localStorage.getItem('saved_notes') || '';
+        notesPopout.style.display = 'flex';
+      }
+    }
+
+    notesTextarea.addEventListener('input', function() {
+      localStorage.setItem('saved_notes', notesTextarea.value);
+    });
+
+    // --- DRAWER & DOCUMENT MANAGEMENT ---
+    function toggleDrawer() {
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+      ledgerInput.value = localStorage.getItem('saved_ledger') || '';
+      refreshAllSlotLabels();
+
+      if (drawer.style.display === 'flex') {
+        drawer.style.display = 'none';
+      } else {
+        drawer.style.display = 'flex';
+      }
+    }
+
+    function saveDocuments() {
+      const prevSummary = localStorage.getItem('saved_summary') || '';
+      if (prevSummary && prevSummary !== summaryInput.value) {
+        pushAutoSave('summary', prevSummary);
+      }
+
+      const prevLedger = localStorage.getItem('saved_ledger') || '';
+      if (prevLedger && prevLedger !== ledgerInput.value) {
+        pushAutoSave('ledger', prevLedger);
+      }
+
+      localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
+      localStorage.setItem('saved_ruleset', rulesetInput.value);
+      localStorage.setItem('saved_summary', summaryInput.value);
+      localStorage.setItem('saved_ledger', ledgerInput.value);
+
+      refreshAllSlotLabels();
+      alert('All documents and API Key saved!');
+      toggleDrawer();
+    }
+
+    // --- AUTO-ROLLING SAVES (3 SLOTS PER DOCUMENT) ---
+    function pushAutoSave(docType, text) {
+      if (!text || text === 'No previous events have occurred yet.') return;
+      const key = docType === 'summary' ? 'rolling_summary_saves' : 'rolling_ledger_saves';
+      let saves = JSON.parse(localStorage.getItem(key) || '[]');
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      saves.unshift({ time: timestamp, text: text });
+      saves = saves.slice(0, 3);
+      localStorage.setItem(key, JSON.stringify(saves));
+      refreshAllSlotLabels();
+    }
+
+    function restoreAutoSave(docType, index) {
+      const key = docType === 'summary' ? 'rolling_summary_saves' : 'rolling_ledger_saves';
+      const targetStorageKey = docType === 'summary' ? 'saved_summary' : 'saved_ledger';
+      const targetInput = docType === 'summary' ? summaryInput : ledgerInput;
+      const saves = JSON.parse(localStorage.getItem(key) || '[]');
+
+      if (!saves[index]) {
+        alert(`Auto backup ${index + 1} is empty.`);
+        return;
+      }
+      if (confirm(`Restore Auto Backup ${index + 1} (${saves[index].time}) into ${docType.toUpperCase()}?`)) {
+        localStorage.setItem(targetStorageKey, saves[index].text);
+        targetInput.value = saves[index].text;
+        alert(`Restored Auto Backup ${index + 1}!`);
+      }
+    }
+
+    // --- INDEPENDENT MANUAL SAVE SYSTEM (3 SLOTS PER DOCUMENT) ---
+    function saveManualSlot(docType, index) {
+      const key = docType === 'summary' ? 'manual_summary_saves' : 'manual_ledger_saves';
+      const currentText = docType === 'summary' ? summaryInput.value : ledgerInput.value;
+
+      if (!currentText.trim()) {
+        alert(`Cannot save an empty ${docType} into a manual slot.`);
+        return;
+      }
+
+      let slots = JSON.parse(localStorage.getItem(key) || '[null, null, null]');
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      slots[index] = { time: timestamp, text: currentText };
+      localStorage.setItem(key, JSON.stringify(slots));
+      refreshAllSlotLabels();
+      alert(`Manually saved ${docType} to Slot ${index + 1} at ${timestamp}.`);
+    }
+
+    function loadManualSlot(docType, index) {
+      const key = docType === 'summary' ? 'manual_summary_saves' : 'manual_ledger_saves';
+      const targetStorageKey = docType === 'summary' ? 'saved_summary' : 'saved_ledger';
+      const targetInput = docType === 'summary' ? summaryInput : ledgerInput;
+      const slots = JSON.parse(localStorage.getItem(key) || '[null, null, null]');
+
+      if (!slots[index]) {
+        alert(`Manual Slot ${index + 1} is empty.`);
+        return;
+      }
+
+      if (confirm(`Overwrite current ${docType} with Manual Slot ${index + 1} (${slots[index].time})?`)) {
+        localStorage.setItem(targetStorageKey, slots[index].text);
+        targetInput.value = slots[index].text;
+        alert(`Loaded Manual Slot ${index + 1}!`);
+      }
+    }
+
+    function refreshAllSlotLabels() {
+      const autoSum = JSON.parse(localStorage.getItem('rolling_summary_saves') || '[]');
+      for (let i = 0; i < 3; i++) {
+        const btn = document.getElementById(`auto-sum-${i + 1}`);
+        btn.textContent = autoSum[i] ? `Auto ${i + 1}\n(${autoSum[i].time})` : `Auto ${i + 1}\n(Empty)`;
+      }
+
+      const manSum = JSON.parse(localStorage.getItem('manual_summary_saves') || '[null, null, null]');
+      for (let i = 0; i < 3; i++) {
+        const lbl = document.getElementById(`man-sum-label-${i}`);
+        lbl.textContent = manSum[i] ? `Slot ${i + 1}\n(${manSum[i].time})` : `Slot ${i + 1}\n(Empty)`;
+      }
+
+      const autoLed = JSON.parse(localStorage.getItem('rolling_ledger_saves') || '[]');
+      for (let i = 0; i < 3; i++) {
+        const btn = document.getElementById(`auto-led-${i + 1}`);
+        btn.textContent = autoLed[i] ? `Auto ${i + 1}\n(${autoLed[i].time})` : `Auto ${i + 1}\n(Empty)`;
+      }
+
+      const manLed = JSON.parse(localStorage.getItem('manual_ledger_saves') || '[null, null, null]');
+      for (let i = 0; i < 3; i++) {
+        const lbl = document.getElementById(`man-led-label-${i}`);
+        lbl.textContent = manLed[i] ? `Slot ${i + 1}\n(${manLed[i].time})` : `Slot ${i + 1}\n(Empty)`;
+      }
+    }
+
+    // --- CHAT DISPLAY & FULL TRANSCRIPT LOGGING (WITH MODEL TRACKING) ---
+    function appendMessageToScreen(role, text, modelName = null) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.classList.add(role === 'user' ? 'user-message' : 'ai-message');
+
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      msgDiv.appendChild(textSpan);
+
+      if (role === 'ai' && modelName) {
+        const modelTag = document.createElement('span');
+        modelTag.classList.add('model-tag');
+        modelTag.textContent = `Model: ${modelName}`;
+        msgDiv.appendChild(modelTag);
+      }
+
+      chatContainer.appendChild(msgDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function recordMessage(role, text, modelName = null) {
+      const savedChat = JSON.parse(localStorage.getItem('visual_chat_log') || '[]');
+      savedChat.push({ role: role, text: text, model: modelName });
+      localStorage.setItem('visual_chat_log', JSON.stringify(savedChat));
+
+      const fullLog = JSON.parse(localStorage.getItem('full_chat_transcript') || '[]');
+      const timestamp = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      fullLog.push({ role: role, text: text, model: modelName, time: timestamp });
+      localStorage.setItem('full_chat_transcript', JSON.stringify(fullLog));
+    }
+
+    function openTranscriptModal() {
+      const fullLog = JSON.parse(localStorage.getItem('full_chat_transcript') || '[]');
+      if (fullLog.length === 0) {
+        transcriptText.value = 'No messages recorded yet.';
+      } else {
+        transcriptText.value = fullLog.map(entry => {
+          const speaker = entry.role === 'user'
+            ? 'PLAYER'
+            : `GEMINI${entry.model ? ` (${entry.model})` : ''}`;
+          return `[${entry.time}] ${speaker}:\n${entry.text}\n----------------------------------------`;
+        }).join('\n\n');
+      }
+      transcriptModal.style.display = 'flex';
+    }
+
+    function closeTranscriptModal() {
+      transcriptModal.style.display = 'none';
+    }
+
+    function copyTranscript() {
+      navigator.clipboard.writeText(transcriptText.value).then(() => {
+        alert('Complete chat log copied to clipboard!');
+      }).catch(() => {
+        transcriptText.select();
+        document.execCommand('copy');
+        alert('Complete chat log copied!');
+      });
+    }
+
+    function clearChatLog() {
+      if (confirm('Clear the visual chat bubbles on screen? Your Full Chat Log, Summary, Ledger, Notes, and Saves will NOT be deleted.')) {
+        localStorage.removeItem('visual_chat_log');
+        chatContainer.innerHTML = '';
+        toggleDrawer();
+      }
+    }
+
+    // --- CORE WORKFLOW: SEND TO GEMINI ---
+    async function handleSend() {
+      if (wakeLockEnabled && !wakeLock) {
+        requestWakeLock();
+      }
+
+      const promptText = userInput.value.trim();
+      const apiKey = localStorage.getItem('gemini_api_key');
+
+      if (!apiKey) {
+        alert('Please tap "Files & Settings" and enter your Gemini API Key first.');
+        toggleDrawer();
+        return;
+      }
+
+      if (!promptText) return;
+
+      // Clear text and reset input box back down to 1 line
+      userInput.value = '';
+      autoResizeInput();
+      sendBtn.disabled = true;
+      sendBtn.textContent = '...';
+
+      appendMessageToScreen('user', promptText);
+      recordMessage('user', promptText);
+
+      const currentRuleset = localStorage.getItem('saved_ruleset') || 'No specific rules provided.';
+      const currentSummary = localStorage.getItem('saved_summary') || 'No previous conversation summary.';
+
+      const combinedPayload = `
+=== RULESET DOCUMENT ===
+${currentRuleset}
+
+=== SAVED CHAT SUMMARY DOCUMENT ===
+${currentSummary}
+
+=== USER COMMAND / ACTION ===
+${promptText}
+
+=== FINAL INSTRUCTION ===
+1. Process the USER COMMAND / ACTION above while strictly obeying the RULESET DOCUMENT and maintaining continuity with the SAVED CHAT SUMMARY DOCUMENT.
+2. Put ONLY your direct, in-character narrative response in the "chat_response" field. Never include thoughts about JSON formatting, rules, or self-corrections.
+3. Produce a new, comprehensive, detailed summary of the entire chat history (incorporating the previous summary plus the events of this latest turn) and place it in the "updated_summary" field so it can overwrite the saved summary text document. Do NOT mention which AI model generated the response inside the summary.
+`;
+
+      try {
+        const cleanKey = apiKey.replace(/\s+/g, '');
+        const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+        let data = null;
+        let usedModel = null;
+        let lastError = null;
+
+        for (const modelName of modelsToTry) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+          try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`, {
+              method: 'POST',
+              mode: 'cors',
+              signal: controller.signal,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: combinedPayload }] }],
+                generationConfig: {
+                  responseMimeType: "application/json",
+                  thinkingConfig: {
+                    includeThoughts: false,
+                    thinkingBudget: 1024
+                  },
+                  responseSchema: {
+                    type: "OBJECT",
+                    properties: {
+                      chat_response: {
+                        type: "STRING",
+                        description: "ONLY the in-character narrative/game response for the player. Never include meta-commentary, JSON notes, or self-corrections."
+                      },
+                      updated_summary: {
+                        type: "STRING",
+                        description: "The new detailed summary of the entire chat to overwrite the saved summary text document."
+                      }
+                    },
+                    required: ["chat_response", "updated_summary"]
+                  }
+                }
+              })
+            });
+
+            clearTimeout(timeoutId);
+            const responseData = await response.json();
+
+            if (response.status === 503 || response.status === 429 || (responseData.error && responseData.error.message.includes('high demand'))) {
+              lastError = responseData.error ? responseData.error.message : `Model ${modelName} busy`;
+              continue;
+            }
+
+            if (responseData.error) {
+              throw new Error(responseData.error.message);
+            }
+
+            data = responseData;
+            usedModel = responseData.modelVersion || modelName;
+            break;
+
+          } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            if (fetchErr.name === 'AbortError' || fetchErr.message.includes('Load failed') || fetchErr.message.includes('Failed to fetch')) {
+              lastError = `Connection dropped on ${modelName}, retrying...`;
+              continue;
+            }
+            throw fetchErr;
+          }
+        }
+
+        if (!data) {
+          throw new Error(lastError || 'All fallback models are currently busy.');
+        }
+
+        const rawJsonText = data.candidates[0].content.parts[0].text;
+        const parsedResult = JSON.parse(rawJsonText);
+
+        appendMessageToScreen('ai', parsedResult.chat_response, usedModel);
+        recordMessage('ai', parsedResult.chat_response, usedModel);
+
+        const oldSummary = localStorage.getItem('saved_summary') || '';
+        const newSummary = (parsedResult.updated_summary || '').trim();
+
+        if (newSummary.length > 20 && (oldSummary.length < 100 || newSummary.length >= oldSummary.length * 0.4)) {
+          if (oldSummary) {
+            pushAutoSave('summary', oldSummary);
+          }
+          localStorage.setItem('saved_summary', newSummary);
+          summaryInput.value = newSummary;
+        } else {
+          appendMessageToScreen('ai', '[System Notice: Gemini returned an incomplete summary on this turn, so your previous summary was automatically protected and kept intact.]');
+        }
+
+      } catch (error) {
+        userInput.value = promptText;
+        autoResizeInput();
+        appendMessageToScreen('ai', 'Error communicating with Gemini: ' + error.message);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
+    }
+  </script>
+</body>
+</html>
