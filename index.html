@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://openrouter.ai; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none';">
+  <title>Command Console (OpenRouter Free)</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* TOP NAVIGATION BAR */
+    header {
+      background-color: #1f1f1f;
+      padding: 12px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #333;
+      gap: 6px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    header h1 {
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    #wake-badge {
+      font-size: 10px;
+      padding: 3px 6px;
+      border-radius: 10px;
+      background-color: #2e7d32;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #wake-badge.off {
+      background-color: #444;
+      color: #bbb;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .nav-btn {
+      background-color: #333;
+      color: white;
+      border: none;
+      padding: 7px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .pip-btn {
+      background-color: #1a3a5c;
+      border: 1px solid #3b7dd8;
+      color: #90caf9;
+      font-weight: bold;
+    }
+
+    .ledger-toggle-btn {
+      background-color: #163832;
+      border: 1px solid #2e8b75;
+      color: #80cbc4;
+      font-weight: bold;
+    }
+
+    .notes-toggle-btn {
+      background-color: #4a3f1f;
+      border: 1px solid #8a732a;
+      color: #ffe082;
+    }
+
+    /* HIDDEN ELEMENTS FOR CANVAS-TO-VIDEO PiP */
+    #pip-canvas, #pip-video {
+      position: fixed;
+      width: 2px;
+      height: 2px;
+      opacity: 0.01;
+      pointer-events: none;
+      bottom: 0;
+      left: 0;
+    }
+
+    /* FLOATING POP-OUT PANELS (NOTES & LEDGER) */
+    .floating-popout {
+      position: fixed;
+      top: 56px;
+      left: 10px;
+      right: 10px;
+      height: 38vh;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+      display: none;
+      flex-direction: column;
+      z-index: 8;
+      overflow: hidden;
+    }
+
+    #notes-popout {
+      background-color: #1e1c16;
+      border: 1px solid #8a732a;
+    }
+
+    #ledger-popout {
+      background-color: #132220;
+      border: 1px solid #2e8b75;
+    }
+
+    .popout-header {
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #notes-popout .popout-header {
+      background-color: #2c281c;
+      border-bottom: 1px solid #4d4323;
+    }
+
+    #notes-popout .popout-header span {
+      font-size: 13px;
+      font-weight: bold;
+      color: #ffe082;
+    }
+
+    #ledger-popout .popout-header {
+      background-color: #19312d;
+      border-bottom: 1px solid #285950;
+    }
+
+    #ledger-popout .popout-header span {
+      font-size: 13px;
+      font-weight: bold;
+      color: #80cbc4;
+    }
+
+    #notes-textarea {
+      flex: 1;
+      width: 100%;
+      background-color: #1e1c16;
+      color: #fff8e1;
+      border: none;
+      padding: 10px 12px;
+      font-size: 15px;
+      line-height: 1.4;
+      resize: none;
+      outline: none;
+    }
+
+    #ledger-popout-textarea {
+      flex: 1;
+      width: 100%;
+      background-color: #132220;
+      color: #e0f2f1;
+      border: none;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      resize: none;
+      outline: none;
+    }
+
+    /* MAIN CHAT LOG DISPLAY */
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 12px;
+      border-radius: 12px;
+      line-height: 1.4;
+      font-size: 15px;
+      white-space: pre-wrap;
+    }
+
+    .user-message {
+      background-color: #0b57d0;
+      align-self: flex-end;
+    }
+
+    .ai-message {
+      background-color: #2b2b2b;
+      align-self: flex-start;
+    }
+
+    .model-tag {
+      display: block;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #3d3d3d;
+      font-size: 11px;
+      color: #8e9aaf;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    /* AUTO-EXPANDING SCROLLABLE INPUT BAR (CAPPED AT 3 LINES) */
+    #input-container {
+      background-color: #1f1f1f;
+      padding: 10px 15px 25px 15px;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      border-top: 1px solid #333;
+    }
+
+    #user-input {
+      flex: 1;
+      background-color: #2b2b2b;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 16px;
+      line-height: 22px;
+      min-height: 44px;
+      max-height: 88px;
+      overflow-y: auto;
+      resize: none;
+      outline: none;
+    }
+
+    #send-btn {
+      background-color: #0b57d0;
+      color: white;
+      border: none;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    #send-btn.cancel-mode {
+      background-color: #c62828;
+    }
+
+    /* SETTINGS & SAVED DOCUMENTS DRAWER */
+    #drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      padding: 20px;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 15;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .section-card {
+      background-color: #181818;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      font-size: 13px;
+      color: #bbb;
+      display: block;
+    }
+
+    .sub-label {
+      font-size: 12px;
+      color: #888;
+      margin-top: -6px;
+    }
+
+    textarea.doc-box, input[type="password"], input[type="text"] {
+      width: 100%;
+      background-color: #1f1f1f;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    textarea.doc-box {
+      height: 130px;
+      resize: vertical;
+    }
+
+    .save-btn {
+      background-color: #2e7d32;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .slot-card {
+      background-color: #222;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      text-align: center;
+    }
+
+    .slot-title {
+      font-size: 11px;
+      color: #aaa;
+      white-space: pre-line;
+    }
+
+    .slot-btn {
+      background-color: #333;
+      color: #fff;
+      border: 1px solid #4a4a4a;
+      padding: 6px 4px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .slot-btn.save-action {
+      background-color: #1b5e20;
+      border-color: #2e7d32;
+    }
+
+    .secondary-btn {
+      background-color: #283593;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .danger-btn {
+      background-color: #c62828;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+
+    /* FULL CHAT LOG MODAL */
+    #transcript-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      padding: 20px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 20;
+    }
+
+    #transcript-text {
+      flex: 1;
+      width: 100%;
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      resize: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header>
+    <div class="header-left">
+      <h1>Console</h1>
+      <button id="wake-badge" onclick="toggleWakeLock()">Awake: ON</button>
+    </div>
+    <div class="header-actions">
+      <button class="nav-btn pip-btn" onclick="togglePiP()">PiP</button>
+      <button class="nav-btn ledger-toggle-btn" onclick="toggleLedgerPopout()">Ledger</button>
+      <button class="nav-btn notes-toggle-btn" onclick="toggleNotes()">Notes</button>
+      <button class="nav-btn" onclick="toggleDrawer()">Files</button>
+    </div>
+  </header>
+
+  <!-- HIDDEN CANVAS + VIDEO FOR IOS PICTURE-IN-PICTURE -->
+  <canvas id="pip-canvas" width="480" height="270"></canvas>
+  <video id="pip-video" muted playsinline></video>
+
+  <!-- FLOATING POP-OUT LEDGER (Live-Synced with AI Payload & Auto-Saved) -->
+  <div id="ledger-popout" class="floating-popout">
+    <div class="popout-header">
+      <span>Character Ledger (AI-Synced • Live Editable)</span>
+      <button class="nav-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleLedgerPopout()">Hide</button>
+    </div>
+    <textarea id="ledger-popout-textarea" placeholder="Stats, HP, XP, gear, gold, and known NPCs/relationships..."></textarea>
+  </div>
+
+  <!-- FLOATING POP-OUT NOTES (Local Only, Private Scratchpad) -->
+  <div id="notes-popout" class="floating-popout">
+    <div class="popout-header">
+      <span>Session Notes (Auto-Saved Locally • Private)</span>
+      <button class="nav-btn" style="padding: 4px 8px; font-size: 12px;" onclick="toggleNotes()">Hide</button>
+    </div>
+    <textarea id="notes-textarea" placeholder="Tap here to jot down private reminders, theories, or scratch notes..."></textarea>
+  </div>
+
+  <!-- MAIN CHAT LOG DISPLAY -->
+  <div id="chat-container"></div>
+
+  <!-- AUTO-EXPANDING SCROLLABLE INPUT AREA (UP TO 3 LINES) -->
+  <div id="input-container">
+    <textarea id="user-input" rows="1" placeholder="Enter command, function, or action..."></textarea>
+    <button id="send-btn" onclick="handleSend()">Send</button>
+  </div>
+
+  <!-- SETTINGS & SAVED DOCUMENTS DRAWER -->
+  <div id="drawer">
+    <div class="drawer-header">
+      <h2>Saved Documents & Setup</h2>
+      <button class="nav-btn" onclick="toggleDrawer()">Close</button>
+    </div>
+
+    <div class="section-card">
+      <label for="api-key-input">OpenRouter API Key (Sent via Bearer header):</label>
+      <input type="password" id="api-key-input" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-...">
+
+      <label for="model-id-input" style="margin-top: 4px;">Free OpenRouter Model ID (Locked to :free or openrouter/free):</label>
+      <span class="sub-label">Default: openrouter/free (sole entry). Any custom :free model falls back to openrouter/free.</span>
+      <input type="text" id="model-id-input" autocomplete="off" spellcheck="false" placeholder="openrouter/free">
+    </div>
+
+    <div class="section-card">
+      <label for="ruleset-input">Ruleset Document (Cached system instruction):</label>
+      <textarea class="doc-box" id="ruleset-input" placeholder="Enter the permanent rules, functions, or instructions the AI must always follow..."></textarea>
+    </div>
+
+    <!-- SUMMARY DOCUMENT + AUTO ROLLING SAVES + INDEPENDENT MANUAL SAVES -->
+    <div class="section-card">
+      <label for="summary-input">Saved Chat Summary Document (Auto-updates every turn):</label>
+      <textarea class="doc-box" id="summary-input" placeholder="The AI will automatically write and overwrite the narrative summary here..."></textarea>
+
+      <label style="margin-top: 4px;">Summary Auto-Rolling Backups (Last 3 AI Turns):</label>
+      <div class="slot-grid">
+        <button class="slot-btn" id="auto-sum-1" onclick="restoreAutoSave('summary', 0)">Auto 1\n(Empty)</button>
+        <button class="slot-btn" id="auto-sum-2" onclick="restoreAutoSave('summary', 1)">Auto 2\n(Empty)</button>
+        <button class="slot-btn" id="auto-sum-3" onclick="restoreAutoSave('summary', 2)">Auto 3\n(Empty)</button>
+      </div>
+
+      <label style="margin-top: 6px;">Manual Summary Saves (Never touched by AI):</label>
+      <div class="slot-grid">
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-0">Slot 1\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 0)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 0)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-1">Slot 2\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 1)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 1)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-sum-label-2">Slot 3\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('summary', 2)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('summary', 2)">Load</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEDGER DOCUMENT + AUTO ROLLING SAVES + INDEPENDENT MANUAL SAVES -->
+    <div class="section-card">
+      <label for="ledger-input">Saved Ledger Document (Auto-updates on state change):</label>
+      <span class="sub-label">Tracks character stats, gear, XP, party, and met NPCs/relationships.</span>
+      <textarea class="doc-box" id="ledger-input" placeholder="Character stats, inventory, XP, gold, party, and met NPCs/relationships..."></textarea>
+
+      <label style="margin-top: 4px;">Ledger Auto-Rolling Backups (Last 3 Changes):</label>
+      <div class="slot-grid">
+        <button class="slot-btn" id="auto-led-1" onclick="restoreAutoSave('ledger', 0)">Auto 1\n(Empty)</button>
+        <button class="slot-btn" id="auto-led-2" onclick="restoreAutoSave('ledger', 1)">Auto 2\n(Empty)</button>
+        <button class="slot-btn" id="auto-led-3" onclick="restoreAutoSave('ledger', 2)">Auto 3\n(Empty)</button>
+      </div>
+
+      <label style="margin-top: 6px;">Manual Ledger Saves (Never touched by AI):</label>
+      <div class="slot-grid">
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-0">Slot 1\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 0)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 0)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-1">Slot 2\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 1)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 1)">Load</button>
+        </div>
+        <div class="slot-card">
+          <div class="slot-title" id="man-led-label-2">Slot 3\n(Empty)</div>
+          <button class="slot-btn save-action" onclick="saveManualSlot('ledger', 2)">Save</button>
+          <button class="slot-btn" onclick="loadManualSlot('ledger', 2)">Load</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="save-btn" onclick="saveDocuments()">Save All Active Documents & Settings</button>
+
+    <button class="secondary-btn" onclick="openTranscriptModal()">View / Copy Full Chat Log</button>
+
+    <button class="danger-btn" onclick="clearChatLog()">Clear Visual Chat Bubbles (Keeps All Documents & Logs)</button>
+  </div>
+
+  <!-- FULL CHAT LOG MODAL -->
+  <div id="transcript-modal">
+    <div class="drawer-header">
+      <h2>Complete Chat Log</h2>
+      <div style="display: flex; gap: 8px;">
+        <button class="save-btn" style="padding: 8px 12px; margin: 0; font-size: 13px;" onclick="copyTranscript()">Copy All</button>
+        <button class="nav-btn" onclick="closeTranscriptModal()">Close</button>
+      </div>
+    </div>
+    <textarea id="transcript-text" readonly></textarea>
+  </div>
+
+  <script>
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const drawer = document.getElementById('drawer');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const modelIdInput = document.getElementById('model-id-input');
+    const rulesetInput = document.getElementById('ruleset-input');
+    const summaryInput = document.getElementById('summary-input');
+    const ledgerInput = document.getElementById('ledger-input');
+    const ledgerPopout = document.getElementById('ledger-popout');
+    const ledgerPopoutTextarea = document.getElementById('ledger-popout-textarea');
+    const notesPopout = document.getElementById('notes-popout');
+    const notesTextarea = document.getElementById('notes-textarea');
+    const wakeBadge = document.getElementById('wake-badge');
+    const transcriptModal = document.getElementById('transcript-modal');
+    const transcriptText = document.getElementById('transcript-text');
+    const pipCanvas = document.getElementById('pip-canvas');
+    const pipVideo = document.getElementById('pip-video');
+
+    const MAX_VISIBLE_BUBBLES = 30;
+    const MAX_STORED_TRANSCRIPT = 1000;
+    const DEFAULT_PRIMARY_MODEL = 'openrouter/free';
+    const REQUEST_TIMEOUT_MS = 90000;
+    let visualChatCache = [];
+    let fullTranscriptCache = [];
+    let isSending = false;
+    let activeAbortController = null;
+
+    function safeSetStorage(key, value) {
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (e) {
+        console.warn('Storage quota warning for key:', key, e);
+        return false;
+      }
+    }
+
+    function safeGetJson(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        console.warn('Corrupted JSON in localStorage for key:', key, e);
+        return fallback;
+      }
+    }
+
+    function isValidOpenRouterKeyFormat(key) {
+      return /^sk-or-[0-9A-Za-z\-_]{20,}$/.test(key);
+    }
+
+    // Strict guard: only allows OpenRouter's free router or models explicitly ending in :free
+    function isFreeOpenRouterModel(modelId) {
+      if (!modelId) return false;
+      const clean = modelId.trim();
+      return clean === 'openrouter/free' || clean.endsWith(':free');
+    }
+
+    // --- IOS PICTURE-IN-PICTURE (ON-DEMAND, BATTERY-SAFE) ---
+    let pipState = {
+      status: 'READY',
+      subtext: 'Waiting for your next command...',
+      model: '',
+      bytesReceived: 0,
+      startTime: null
+    };
+    let pipStreamInitialized = false;
+    let pipIntervalId = null;
+
+    function initPiPStream() {
+      if (pipStreamInitialized) return;
+      try {
+        drawPiPCanvas();
+        if (!pipCanvas.captureStream) return;
+        const stream = pipCanvas.captureStream(10);
+        pipVideo.srcObject = stream;
+        pipVideo.muted = true;
+        pipVideo.playsInline = true;
+        pipStreamInitialized = true;
+      } catch (e) {
+        console.warn('PiP stream init deferred:', e);
+      }
+    }
+
+    function isPiPActive() {
+      return Boolean(document.pictureInPictureElement) || pipVideo.webkitPresentationMode === 'picture-in-picture';
+    }
+
+    function drawPiPCanvas() {
+      const ctx = pipCanvas.getContext('2d');
+      const w = pipCanvas.width;
+      const h = pipCanvas.height;
+
+      ctx.fillStyle = '#14171f';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.fillStyle = pipState.status === 'THINKING' ? '#f59e0b' : (pipState.status === 'ERROR' ? '#ef4444' : '#22c55e');
+      ctx.fillRect(0, 0, w, 10);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 25px -apple-system, sans-serif';
+      let headerText = '● Ready for Action';
+      if (pipState.status === 'THINKING') {
+        const elapsed = pipState.startTime ? Math.floor((Date.now() - pipState.startTime) / 1000) : 0;
+        const streamInfo = pipState.bytesReceived > 0 ? ` • ${pipState.bytesReceived} chars` : '';
+        headerText = `⏳ Streaming... (${elapsed}s${streamInfo})`;
+      } else if (pipState.status === 'DONE') {
+        headerText = '✅ Response Ready!';
+      } else if (pipState.status === 'ERROR') {
+        headerText = '⚠️ Error Occurred';
+      }
+      ctx.fillText(headerText, 24, 56);
+
+      if (pipState.model) {
+        ctx.fillStyle = '#90caf9';
+        ctx.font = '15px monospace';
+        ctx.fillText(`Model: ${pipState.model}`, 24, 86);
+      }
+
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = '18px -apple-system, sans-serif';
+      const words = (pipState.subtext || '').replace(/\s+/g, ' ').split(' ');
+      let line = '';
+      let y = 122;
+      const maxWidth = w - 48;
+
+      for (let i = 0; i < words.length; i++) {
+        const testLine = line + words[i] + ' ';
+        if (ctx.measureText(testLine).width > maxWidth && i > 0) {
+          ctx.fillText(line.trim(), 24, y);
+          line = words[i] + ' ';
+          y += 26;
+          if (y > h - 20) {
+            ctx.fillText('...', 24, y);
+            break;
+          }
+        } else {
+          line = testLine;
+        }
+      }
+      if (y <= h - 20) {
+        ctx.fillText(line.trim(), 24, y);
+      }
+    }
+
+    function updatePiPTimerState() {
+      const needsTimer = pipState.status === 'THINKING' || isPiPActive();
+      if (needsTimer && !pipIntervalId) {
+        drawPiPCanvas();
+        pipIntervalId = setInterval(() => {
+          if (pipState.status !== 'THINKING' && !isPiPActive()) {
+            clearInterval(pipIntervalId);
+            pipIntervalId = null;
+            return;
+          }
+          drawPiPCanvas();
+        }, 1000);
+      } else if (!needsTimer && pipIntervalId) {
+        clearInterval(pipIntervalId);
+        pipIntervalId = null;
+      }
+    }
+
+    pipVideo.addEventListener('enterpictureinpicture', updatePiPTimerState);
+    pipVideo.addEventListener('leavepictureinpicture', () => {
+      pipVideo.pause();
+      updatePiPTimerState();
+    });
+    pipVideo.addEventListener('webkitpresentationmodechanged', () => {
+      if (!isPiPActive()) {
+        pipVideo.pause();
+      }
+      updatePiPTimerState();
+    });
+
+    async function togglePiP() {
+      try {
+        if (isPiPActive()) {
+          if (document.exitPictureInPicture) {
+            await document.exitPictureInPicture();
+          } else if (pipVideo.webkitSetPresentationMode) {
+            pipVideo.webkitSetPresentationMode('inline');
+          }
+          return;
+        }
+
+        if (!pipCanvas.captureStream) {
+          alert('Your browser does not support canvas video capture for PiP.');
+          return;
+        }
+
+        initPiPStream();
+        drawPiPCanvas();
+        await pipVideo.play();
+
+        if (pipVideo.requestPictureInPicture && document.pictureInPictureEnabled) {
+          await pipVideo.requestPictureInPicture();
+        } else if (
+          pipVideo.webkitSupportsPresentationMode &&
+          pipVideo.webkitSupportsPresentationMode('picture-in-picture')
+        ) {
+          pipVideo.webkitSetPresentationMode('picture-in-picture');
+        } else {
+          alert('PiP is unavailable here. Make sure you are running this in Safari (not a Home Screen web app).');
+        }
+        updatePiPTimerState();
+      } catch (err) {
+        alert('Could not start PiP: ' + err.message);
+      }
+    }
+
+    // --- ACCURATE AUTO-EXPANDING INPUT BOX ---
+    function autoResizeInput() {
+      userInput.style.height = '44px';
+      const newHeight = Math.min(userInput.scrollHeight, 88);
+      userInput.style.height = newHeight + 'px';
+    }
+
+    userInput.addEventListener('input', autoResizeInput);
+
+    // --- PREVENT IPHONE AUTO-LOCK (SCREEN WAKE LOCK API) ---
+    let wakeLock = null;
+    let wakeLockEnabled = true;
+
+    async function requestWakeLock() {
+      if (!wakeLockEnabled || !('wakeLock' in navigator)) {
+        updateWakeBadge(false);
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        updateWakeBadge(true);
+        wakeLock.addEventListener('release', () => {
+          updateWakeBadge(false);
+        });
+      } catch (err) {
+        updateWakeBadge(false);
+      }
+    }
+
+    function updateWakeBadge(isActive) {
+      if (isActive) {
+        wakeBadge.textContent = 'Awake: ON';
+        wakeBadge.classList.remove('off');
+      } else {
+        wakeBadge.textContent = 'Awake: OFF';
+        wakeBadge.classList.add('off');
+      }
+    }
+
+    async function toggleWakeLock() {
+      if (wakeLock !== null) {
+        wakeLockEnabled = false;
+        await wakeLock.release();
+        wakeLock = null;
+        updateWakeBadge(false);
+      } else {
+        wakeLockEnabled = true;
+        await requestWakeLock();
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLockEnabled && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    });
+
+    // --- INITIALIZATION ---
+    window.onload = function() {
+      requestWakeLock();
+
+      apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
+      const savedModel = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
+      modelIdInput.value = isFreeOpenRouterModel(savedModel) ? savedModel : DEFAULT_PRIMARY_MODEL;
+      if (!isFreeOpenRouterModel(savedModel)) {
+        safeSetStorage('openrouter_model_id', DEFAULT_PRIMARY_MODEL);
+      }
+
+      rulesetInput.value = localStorage.getItem('saved_ruleset') || 'You are a helpful assistant processing user commands and actions.';
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+      const storedLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
+      ledgerInput.value = storedLedger;
+      ledgerPopoutTextarea.value = storedLedger;
+      notesTextarea.value = localStorage.getItem('saved_notes') || '';
+
+      visualChatCache = safeGetJson('visual_chat_log', []);
+      const visibleSlice = visualChatCache.slice(-MAX_VISIBLE_BUBBLES);
+      visibleSlice.forEach(msg => appendMessageToScreen(msg.role, msg.text, msg.model));
+
+      const storedTranscript = safeGetJson('full_chat_transcript', null);
+      if (Array.isArray(storedTranscript)) {
+        fullTranscriptCache = storedTranscript;
+      } else if (visualChatCache.length > 0) {
+        fullTranscriptCache = visualChatCache.map(m => ({
+          role: m.role,
+          text: m.text,
+          model: m.model || null,
+          time: 'Previous Session'
+        }));
+        safeSetStorage('full_chat_transcript', JSON.stringify(fullTranscriptCache));
+      }
+
+      refreshAllSlotLabels();
+      autoResizeInput();
+    };
+
+    // --- POP-OUT LEDGER (LIVE-SYNCED WITH AI & DEBOUNCED AUTO-SAVE) ---
+    let ledgerSaveTimer = null;
+    function flushLedgerPopoutSave() {
+      clearTimeout(ledgerSaveTimer);
+      safeSetStorage('saved_ledger', ledgerPopoutTextarea.value);
+      ledgerInput.value = ledgerPopoutTextarea.value;
+    }
+
+    function toggleLedgerPopout() {
+      if (ledgerPopout.style.display === 'flex') {
+        flushLedgerPopoutSave();
+        ledgerPopout.style.display = 'none';
+      } else {
+        notesPopout.style.display = 'none';
+        ledgerPopoutTextarea.value = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
+        ledgerPopout.style.display = 'flex';
+      }
+    }
+
+    ledgerPopoutTextarea.addEventListener('input', function() {
+      clearTimeout(ledgerSaveTimer);
+      ledgerSaveTimer = setTimeout(flushLedgerPopoutSave, 300);
+    });
+    ledgerPopoutTextarea.addEventListener('blur', flushLedgerPopoutSave);
+
+    // --- POP-OUT NOTES (DEBOUNCED AUTO-SAVE, PRIVATE) ---
+    let notesSaveTimer = null;
+    function flushNotesSave() {
+      clearTimeout(notesSaveTimer);
+      safeSetStorage('saved_notes', notesTextarea.value);
+    }
+
+    function toggleNotes() {
+      if (notesPopout.style.display === 'flex') {
+        flushNotesSave();
+        notesPopout.style.display = 'none';
+      } else {
+        ledgerPopout.style.display = 'none';
+        notesTextarea.value = localStorage.getItem('saved_notes') || '';
+        notesPopout.style.display = 'flex';
+      }
+    }
+
+    notesTextarea.addEventListener('input', function() {
+      clearTimeout(notesSaveTimer);
+      notesSaveTimer = setTimeout(flushNotesSave, 300);
+    });
+    notesTextarea.addEventListener('blur', flushNotesSave);
+
+    // --- DRAWER & DOCUMENT MANAGEMENT ---
+    function toggleDrawer() {
+      apiKeyInput.value = localStorage.getItem('openrouter_api_key') || '';
+      modelIdInput.value = localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL;
+      summaryInput.value = localStorage.getItem('saved_summary') || 'No previous events have occurred yet.';
+      ledgerInput.value = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
+      refreshAllSlotLabels();
+
+      if (drawer.style.display === 'flex') {
+        drawer.style.display = 'none';
+      } else {
+        drawer.style.display = 'flex';
+      }
+    }
+
+    function saveDocuments() {
+      const cleanedKey = apiKeyInput.value.replace(/\s+/g, '');
+      if (cleanedKey && !isValidOpenRouterKeyFormat(cleanedKey)) {
+        alert('Warning: That does not look like a valid OpenRouter API key (it should start with "sk-or-"). Please double-check your pasted key.');
+        return;
+      }
+
+      const chosenModel = modelIdInput.value.trim() || DEFAULT_PRIMARY_MODEL;
+      if (!isFreeOpenRouterModel(chosenModel)) {
+        alert('Free-Only Protection: Your Model ID must be "openrouter/free" or end with ":free" so you are never billed.');
+        return;
+      }
+
+      const prevSummary = localStorage.getItem('saved_summary') || '';
+      if (prevSummary && prevSummary !== summaryInput.value) {
+        pushAutoSave('summary', prevSummary);
+      }
+
+      const prevLedger = localStorage.getItem('saved_ledger') || '';
+      if (prevLedger && prevLedger !== ledgerInput.value) {
+        pushAutoSave('ledger', prevLedger);
+      }
+
+      safeSetStorage('openrouter_api_key', cleanedKey);
+      safeSetStorage('openrouter_model_id', chosenModel);
+      safeSetStorage('saved_ruleset', rulesetInput.value);
+      safeSetStorage('saved_summary', summaryInput.value);
+      safeSetStorage('saved_ledger', ledgerInput.value);
+      ledgerPopoutTextarea.value = ledgerInput.value;
+
+      refreshAllSlotLabels();
+      alert('All documents and Free OpenRouter settings saved!');
+      toggleDrawer();
+    }
+
+    // --- AUTO-ROLLING SAVES (3 SLOTS PER DOCUMENT) ---
+    function pushAutoSave(docType, text) {
+      if (!text || text === 'No previous events have occurred yet.' || text === 'No character ledger entries recorded yet.') return;
+      const key = docType === 'summary' ? 'rolling_summary_saves' : 'rolling_ledger_saves';
+      let saves = safeGetJson(key, []);
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      saves.unshift({ time: timestamp, text: text });
+      saves = saves.slice(0, 3);
+      safeSetStorage(key, JSON.stringify(saves));
+      refreshAllSlotLabels();
+    }
+
+    function restoreAutoSave(docType, index) {
+      const key = docType === 'summary' ? 'rolling_summary_saves' : 'rolling_ledger_saves';
+      const targetStorageKey = docType === 'summary' ? 'saved_summary' : 'saved_ledger';
+      const targetInput = docType === 'summary' ? summaryInput : ledgerInput;
+      const saves = safeGetJson(key, []);
+
+      if (!saves[index]) {
+        alert(`Auto backup ${index + 1} is empty.`);
+        return;
+      }
+      if (confirm(`Restore Auto Backup ${index + 1} (${saves[index].time}) into ${docType.toUpperCase()}?`)) {
+        safeSetStorage(targetStorageKey, saves[index].text);
+        targetInput.value = saves[index].text;
+        if (docType === 'ledger') {
+          ledgerPopoutTextarea.value = saves[index].text;
+        }
+        alert(`Restored Auto Backup ${index + 1}!`);
+      }
+    }
+
+    // --- INDEPENDENT MANUAL SAVE SYSTEM (3 SLOTS PER DOCUMENT) ---
+    function saveManualSlot(docType, index) {
+      const key = docType === 'summary' ? 'manual_summary_saves' : 'manual_ledger_saves';
+      const currentText = docType === 'summary' ? summaryInput.value : ledgerInput.value;
+
+      if (!currentText.trim()) {
+        alert(`Cannot save an empty ${docType} into a manual slot.`);
+        return;
+      }
+
+      let slots = safeGetJson(key, [null, null, null]);
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      slots[index] = { time: timestamp, text: currentText };
+      safeSetStorage(key, JSON.stringify(slots));
+      refreshAllSlotLabels();
+      alert(`Manually saved ${docType} to Slot ${index + 1} at ${timestamp}.`);
+    }
+
+    function loadManualSlot(docType, index) {
+      const key = docType === 'summary' ? 'manual_summary_saves' : 'manual_ledger_saves';
+      const targetStorageKey = docType === 'summary' ? 'saved_summary' : 'saved_ledger';
+      const targetInput = docType === 'summary' ? summaryInput : ledgerInput;
+      const slots = safeGetJson(key, [null, null, null]);
+
+      if (!slots[index]) {
+        alert(`Manual Slot ${index + 1} is empty.`);
+        return;
+      }
+
+      if (confirm(`Overwrite current ${docType} with Manual Slot ${index + 1} (${slots[index].time})?`)) {
+        safeSetStorage(targetStorageKey, slots[index].text);
+        targetInput.value = slots[index].text;
+        if (docType === 'ledger') {
+          ledgerPopoutTextarea.value = slots[index].text;
+        }
+        alert(`Loaded Manual Slot ${index + 1}!`);
+      }
+    }
+
+    function refreshAllSlotLabels() {
+      const autoSum = safeGetJson('rolling_summary_saves', []);
+      for (let i = 0; i < 3; i++) {
+        const btn = document.getElementById(`auto-sum-${i + 1}`);
+        btn.textContent = autoSum[i] ? `Auto ${i + 1}\n(${autoSum[i].time})` : `Auto ${i + 1}\n(Empty)`;
+      }
+
+      const manSum = safeGetJson('manual_summary_saves', [null, null, null]);
+      for (let i = 0; i < 3; i++) {
+        const lbl = document.getElementById(`man-sum-label-${i}`);
+        lbl.textContent = manSum[i] ? `Slot ${i + 1}\n(${manSum[i].time})` : `Slot ${i + 1}\n(Empty)`;
+      }
+
+      const autoLed = safeGetJson('rolling_ledger_saves', []);
+      for (let i = 0; i < 3; i++) {
+        const btn = document.getElementById(`auto-led-${i + 1}`);
+        btn.textContent = autoLed[i] ? `Auto ${i + 1}\n(${autoLed[i].time})` : `Auto ${i + 1}\n(Empty)`;
+      }
+
+      const manLed = safeGetJson('manual_ledger_saves', [null, null, null]);
+      for (let i = 0; i < 3; i++) {
+        const lbl = document.getElementById(`man-led-label-${i}`);
+        lbl.textContent = manLed[i] ? `Slot ${i + 1}\n(${manLed[i].time})` : `Slot ${i + 1}\n(Empty)`;
+      }
+    }
+
+    // --- CHAT DISPLAY (CAPPED DOM) & FULL TRANSCRIPT LOGGING ---
+    function appendMessageToScreen(role, text, modelName = null) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.classList.add(role === 'user' ? 'user-message' : 'ai-message');
+
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      msgDiv.appendChild(textSpan);
+
+      if (role === 'ai' && modelName) {
+        const modelTag = document.createElement('span');
+        modelTag.classList.add('model-tag');
+        modelTag.textContent = `Model: ${modelName}`;
+        msgDiv.appendChild(modelTag);
+      }
+
+      chatContainer.appendChild(msgDiv);
+
+      while (chatContainer.children.length > MAX_VISIBLE_BUBBLES) {
+        chatContainer.removeChild(chatContainer.firstChild);
+      }
+
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return msgDiv;
+    }
+
+    function recordMessage(role, text, modelName = null) {
+      visualChatCache.push({ role: role, text: text, model: modelName });
+      if (visualChatCache.length > MAX_VISIBLE_BUBBLES) {
+        visualChatCache = visualChatCache.slice(-MAX_VISIBLE_BUBBLES);
+      }
+      safeSetStorage('visual_chat_log', JSON.stringify(visualChatCache));
+
+      const timestamp = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      fullTranscriptCache.push({ role: role, text: text, model: modelName, time: timestamp });
+      if (fullTranscriptCache.length > MAX_STORED_TRANSCRIPT) {
+        fullTranscriptCache = fullTranscriptCache.slice(-MAX_STORED_TRANSCRIPT);
+      }
+      safeSetStorage('full_chat_transcript', JSON.stringify(fullTranscriptCache));
+    }
+
+    // --- SLIDING WINDOW HELPER: LAST 2 TURNS (4 MESSAGES) FOR TOKEN EFFICIENCY ---
+    function getRecentSlidingWindow(turnCount = 2) {
+      const validMessages = fullTranscriptCache
+        .filter(entry => !entry.text.startsWith('[System Notice:'));
+
+      const recentSlice = validMessages.slice(-(turnCount * 2));
+
+      if (recentSlice.length === 0) {
+        return 'No immediate prior turns yet.';
+      }
+
+      return recentSlice.map(entry => {
+        const speaker = entry.role === 'user' ? 'PLAYER' : 'GM/ASSISTANT';
+        return `${speaker}: ${entry.text}`;
+      }).join('\n\n');
+    }
+
+    function openTranscriptModal() {
+      if (fullTranscriptCache.length === 0) {
+        transcriptText.value = 'No messages recorded yet.';
+      } else {
+        transcriptText.value = fullTranscriptCache.map(entry => {
+          const speaker = entry.role === 'user'
+            ? 'PLAYER'
+            : `AI${entry.model ? ` (${entry.model})` : ''}`;
+          return `[${entry.time}] ${speaker}:\n${entry.text}\n----------------------------------------`;
+        }).join('\n\n');
+      }
+      transcriptModal.style.display = 'flex';
+    }
+
+    function closeTranscriptModal() {
+      transcriptModal.style.display = 'none';
+    }
+
+    function copyTranscript() {
+      navigator.clipboard.writeText(transcriptText.value).then(() => {
+        alert('Complete chat log copied to clipboard!');
+      }).catch(() => {
+        transcriptText.select();
+        document.execCommand('copy');
+        alert('Complete chat log copied!');
+      });
+    }
+
+    function clearChatLog() {
+      if (confirm('Clear the visual chat bubbles on screen? Your Full Chat Log, Summary, Ledger, Notes, and Saves will NOT be deleted.')) {
+        visualChatCache = [];
+        localStorage.removeItem('visual_chat_log');
+        chatContainer.innerHTML = '';
+        toggleDrawer();
+      }
+    }
+
+    // Escapes raw newlines/tabs inside JSON string literals so free models don't crash JSON.parse()
+    function sanitizeJsonStringLiterals(jsonStr) {
+      let result = '';
+      let inString = false;
+      let escaped = false;
+      for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i];
+        if (inString) {
+          if (escaped) {
+            result += ch;
+            escaped = false;
+          } else if (ch === '\\') {
+            result += ch;
+            escaped = true;
+          } else if (ch === '"') {
+            result += ch;
+            inString = false;
+          } else if (ch === '\n') {
+            result += '\\n';
+          } else if (ch === '\r') {
+            // Strip raw carriage returns inside strings
+          } else if (ch === '\t') {
+            result += '\\t';
+          } else {
+            result += ch;
+          }
+        } else {
+          if (ch === '"') inString = true;
+          result += ch;
+        }
+      }
+      return result;
+    }
+
+    // Extracts and recovers valid JSON (handles markdown fences, raw newlines, and trailing commas)
+    function extractJsonPayload(rawText) {
+      const stripped = rawText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      try {
+        return JSON.parse(stripped);
+      } catch (e) {
+        const firstBrace = stripped.indexOf('{');
+        const lastBrace = stripped.lastIndexOf('}');
+        const candidate = (firstBrace !== -1 && lastBrace > firstBrace)
+          ? stripped.slice(firstBrace, lastBrace + 1)
+          : stripped;
+        try {
+          return JSON.parse(candidate);
+        } catch (innerErr) {
+          const sanitized = sanitizeJsonStringLiterals(candidate).replace(/,\s*([}\]])/g, '$1');
+          return JSON.parse(sanitized);
+        }
+      }
+    }
+
+    // Safely converts strings, arrays, or nested JSON objects into clean plain text
+    function normalizeFieldToText(val) {
+      if (typeof val === 'string') return val.trim();
+      if (val === null || val === undefined) return '';
+      if (Array.isArray(val)) {
+        return val.map(item => normalizeFieldToText(item)).filter(Boolean).join('\n');
+      }
+      if (typeof val === 'object') {
+        return Object.entries(val)
+          .map(([k, v]) => `[${k}]\n${normalizeFieldToText(v)}`)
+          .join('\n\n');
+      }
+      return String(val).trim();
+    }
+
+    // --- SINGLE-REQUEST STREAMING HELPER WITH TIMEOUT & CLEAN SSE FLUSH ---
+    async function streamSingleOpenRouterRequest(freeModelsList, cleanKey, systemPromptText, dynamicUserPayload, signal) {
+      for (const m of freeModelsList) {
+        if (!isFreeOpenRouterModel(m)) {
+          throw new Error(`Blocked non-free model "${m}". Only ":free" models or "openrouter/free" are permitted.`);
+        }
+      }
+
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+      const requestBody = {
+        model: freeModelsList[0],
+        stream: true,
+        reasoning: {
+          effort: 'low',
+          exclude: true
+        },
+        messages: [
+          { role: 'system', content: systemPromptText },
+          { role: 'user', content: dynamicUserPayload }
+        ]
+      };
+
+      // Only send `models` fallback array if a custom :free model was chosen ahead of openrouter/free
+      if (freeModelsList.length > 1) {
+        requestBody.models = freeModelsList.slice(0, 3);
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        signal: signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cleanKey}`,
+          'X-Title': 'Command Console'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        let errMessage = `HTTP ${response.status}`;
+        try {
+          const errJson = await response.json();
+          if (errJson.error && errJson.error.message) {
+            errMessage = errJson.error.message;
+          }
+        } catch (e) {}
+        const err = new Error(errMessage);
+        err.status = response.status;
+        throw err;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let assembledJsonText = '';
+      let actualModel = freeModelsList[0];
+
+      function processSseLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) return;
+        const jsonStr = trimmed.slice(5).trim();
+        if (!jsonStr || jsonStr === '[DONE]') return;
+
+        let chunkObj;
+        try {
+          chunkObj = JSON.parse(jsonStr);
+        } catch (e) {
+          return; // Ignore partial/keepalive non-JSON SSE lines
+        }
+
+        if (chunkObj.error && chunkObj.error.message) {
+          throw new Error(chunkObj.error.message);
+        }
+        if (chunkObj.model) {
+          actualModel = chunkObj.model;
+          pipState.model = actualModel;
+        }
+        const deltaContent = chunkObj.choices?.[0]?.delta?.content;
+        if (deltaContent) {
+          assembledJsonText += deltaContent;
+          pipState.bytesReceived = assembledJsonText.length;
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          processSseLine(line);
+        }
+      }
+
+      // Flush remaining decoder bytes and any trailing SSE line without a final newline
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        for (const line of buffer.split('\n')) {
+          processSseLine(line);
+        }
+      }
+
+      if (!assembledJsonText) {
+        throw new Error('Empty stream received from OpenRouter.');
+      }
+
+      return {
+        parsedResult: extractJsonPayload(assembledJsonText),
+        usedModel: actualModel
+      };
+    }
+
+    // --- CORE WORKFLOW: GUARANTEED 1 API REQUEST PER TURN ---
+    async function handleSend() {
+      // If currently streaming, tapping the button cancels the hung request cleanly
+      if (isSending) {
+        if (activeAbortController) {
+          activeAbortController.abort('USER_CANCEL');
+        }
+        return;
+      }
+
+      if (wakeLockEnabled && !wakeLock) {
+        requestWakeLock();
+      }
+
+      const promptText = userInput.value.trim();
+      const apiKey = localStorage.getItem('openrouter_api_key');
+
+      if (!apiKey) {
+        alert('Please tap "Files" and enter your OpenRouter API Key first.');
+        toggleDrawer();
+        return;
+      }
+
+      const cleanKey = apiKey.replace(/\s+/g, '');
+      if (!isValidOpenRouterKeyFormat(cleanKey)) {
+        alert('Invalid OpenRouter API Key format detected. Please open "Files" and verify your sk-or-... key.');
+        toggleDrawer();
+        return;
+      }
+
+      const configuredModel = (localStorage.getItem('openrouter_model_id') || DEFAULT_PRIMARY_MODEL).trim();
+      if (!isFreeOpenRouterModel(configuredModel)) {
+        alert('Free-Only Protection: Your configured model does not end with ":free" or equal "openrouter/free". Please open "Files" and select a free model.');
+        toggleDrawer();
+        return;
+      }
+
+      if (!promptText) return;
+
+      isSending = true;
+      activeAbortController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        if (activeAbortController) {
+          activeAbortController.abort('TIMEOUT');
+        }
+      }, REQUEST_TIMEOUT_MS);
+
+      userInput.value = '';
+      autoResizeInput();
+      sendBtn.textContent = 'Cancel';
+      sendBtn.classList.add('cancel-mode');
+
+      pipState = {
+        status: 'THINKING',
+        subtext: `Prompt: "${promptText}"`,
+        model: configuredModel,
+        bytesReceived: 0,
+        startTime: Date.now()
+      };
+      drawPiPCanvas();
+      updatePiPTimerState();
+
+      // Show user bubble immediately; only persist to caches once the turn succeeds
+      const pendingUserBubble = appendMessageToScreen('user', promptText);
+
+      const currentRuleset = localStorage.getItem('saved_ruleset') || 'No specific rules provided.';
+      const currentSummary = localStorage.getItem('saved_summary') || 'No previous conversation summary.';
+      const currentLedger = localStorage.getItem('saved_ledger') || 'No character ledger entries recorded yet.';
+      const recentWindow = getRecentSlidingWindow(2);
+
+      // Deduplicated system prompt: delegates section formatting to the Ruleset and enforces clean JSON
+      const staticSystemPrompt = `=== RULESET DOCUMENT ===
+${currentRuleset}
+
+=== JSON OUTPUT CONTRACT ===
+1. Process the USER COMMAND / ACTION while obeying the RULESET DOCUMENT and maintaining continuity with the Summary, Ledger, and Recent Conversation.
+2. Respond ONLY with a single raw, valid JSON object (no markdown fences, no extra text outside the braces) containing these exact 3 keys:
+{
+  "chat_response": "Direct in-character narrative/mechanics response only. Never include meta-commentary or self-corrections.",
+  "updated_summary": "Complete updated summary following the Ruleset's summary structure. Keep it thorough and detailed rather than shrinking it into a brief blurb.",
+  "updated_ledger": "Exact string 'NO_CHANGE' if no stats, gear, party, or NPCs changed; otherwise the complete updated ledger following the Ruleset's ledger structure."
+}
+3. Escape all line breaks inside JSON string values as \\n and double quotes as \\". Never mention which AI model generated the response.`;
+
+      const dynamicPayload = `=== SAVED CHAT SUMMARY DOCUMENT ===
+${currentSummary}
+
+=== SAVED LEDGER DOCUMENT ===
+${currentLedger}
+
+=== RECENT CONVERSATION (LAST 2 TURNS) ===
+${recentWindow}
+
+=== USER COMMAND / ACTION ===
+${promptText}`;
+
+      try {
+        // openrouter/free is the sole entry by default; custom :free models fall back to openrouter/free last
+        const freeModelsList = configuredModel === 'openrouter/free'
+          ? ['openrouter/free']
+          : [configuredModel, 'openrouter/free'].filter(isFreeOpenRouterModel);
+
+        const { parsedResult, usedModel } = await streamSingleOpenRouterRequest(
+          freeModelsList,
+          cleanKey,
+          staticSystemPrompt,
+          dynamicPayload,
+          activeAbortController.signal
+        );
+
+        const chatText = normalizeFieldToText(parsedResult.chat_response);
+        if (!chatText) {
+          throw new Error('Model returned an empty chat_response.');
+        }
+
+        // Persist user + AI messages together now that the turn succeeded
+        recordMessage('user', promptText);
+        appendMessageToScreen('ai', chatText, usedModel);
+        recordMessage('ai', chatText, usedModel);
+
+        pipState = {
+          status: 'DONE',
+          subtext: chatText,
+          model: usedModel,
+          bytesReceived: 0,
+          startTime: null
+        };
+        drawPiPCanvas();
+        updatePiPTimerState();
+
+        // 1. Update Summary with Anti-Wipe Safeguard & Auto-Rolling Backup
+        const oldSummary = localStorage.getItem('saved_summary') || '';
+        const newSummary = normalizeFieldToText(parsedResult.updated_summary);
+
+        if (newSummary.length > 20 && (oldSummary.length < 100 || newSummary.length >= oldSummary.length * 0.4)) {
+          if (oldSummary && oldSummary !== newSummary) {
+            pushAutoSave('summary', oldSummary);
+          }
+          safeSetStorage('saved_summary', newSummary);
+          summaryInput.value = newSummary;
+        } else {
+          appendMessageToScreen('ai', '[System Notice: The AI returned an incomplete summary on this turn, so your previous summary was automatically protected and kept intact.]');
+        }
+
+        // 2. Update Ledger (Skips overwrite & backup rotation if AI returned NO_CHANGE)
+        const oldLedger = localStorage.getItem('saved_ledger') || '';
+        const newLedger = normalizeFieldToText(parsedResult.updated_ledger);
+
+        if (newLedger === 'NO_CHANGE' || newLedger === oldLedger) {
+          // Ledger unchanged this turn — preserve existing ledger and auto-save slots
+        } else if (newLedger.length > 15 && (oldLedger.length < 80 || newLedger.length >= oldLedger.length * 0.4)) {
+          if (oldLedger) {
+            pushAutoSave('ledger', oldLedger);
+          }
+          safeSetStorage('saved_ledger', newLedger);
+          ledgerInput.value = newLedger;
+          ledgerPopoutTextarea.value = newLedger;
+        } else {
+          appendMessageToScreen('ai', '[System Notice: The AI returned an incomplete ledger on this turn, so your previous ledger was automatically protected and kept intact.]');
+        }
+
+      } catch (error) {
+        // Roll back the temporary user bubble so retrying doesn't create duplicates
+        if (pendingUserBubble && pendingUserBubble.parentNode) {
+          pendingUserBubble.remove();
+        }
+        userInput.value = promptText;
+        autoResizeInput();
+
+        let errMsg = error.message || 'Unknown error';
+        if (error.name === 'AbortError' || activeAbortController?.signal?.aborted) {
+          errMsg = activeAbortController?.signal?.reason === 'TIMEOUT'
+            ? 'Request timed out after 90 seconds. Tap Send to retry.'
+            : 'Request canceled.';
+        }
+
+        appendMessageToScreen('ai', 'Error communicating with OpenRouter: ' + errMsg);
+
+        pipState = {
+          status: 'ERROR',
+          subtext: errMsg,
+          model: '',
+          bytesReceived: 0,
+          startTime: null
+        };
+        drawPiPCanvas();
+        updatePiPTimerState();
+      } finally {
+        clearTimeout(timeoutId);
+        activeAbortController = null;
+        isSending = false;
+        sendBtn.textContent = 'Send';
+        sendBtn.classList.remove('cancel-mode');
+      }
+    }
+  </script>
+</body>
+</html>
